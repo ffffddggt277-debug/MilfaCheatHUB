@@ -358,6 +358,10 @@ function Features:Build()
     self.UI:AddToggle(systemTab, "Человеческие задержки (джиттер)", settings.HumanizeDelays, function(value)
         settings.HumanizeDelays = value
     end)
+    self.UI:AddToggle(systemTab, "Блокировать клиентский Kick (анти-кик)", settings.BlockKick, function(value)
+        settings.BlockKick = value
+        if self.Stealth then self.Stealth.BlockKick = value end
+    end)
     self.UI:AddSlider(systemTab, "Лимит AskHatch за такт", 1, 8, settings.MaxHatchPerTick, "", function(value)
         settings.MaxHatchPerTick = value
     end)

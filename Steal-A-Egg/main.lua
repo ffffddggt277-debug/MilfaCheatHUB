@@ -1,9 +1,9 @@
 -- MilfaCheatHUB • Steal An Egg
--- Stable modular entry point v0.4.0 (stealth).
+-- Stable modular entry point v0.4.1 (stealth hotfix).
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.4.0"
+local VERSION = "0.4.1"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -56,8 +56,16 @@ env.MilfaPanic = env.MilfaCheatHUBCleanup
 
 local function loadModule(relativePath)
     local url = BASE_URL .. relativePath .. "?v=" .. VERSION
-    local requestOk, source = pcall(game.HttpGet, game, url)
-    if not requestOk or type(source) ~= "string" or #source < 10 then
+    local source
+    for attempt = 1, 3 do
+        local requestOk, result = pcall(game.HttpGet, game, url)
+        if requestOk and type(result) == "string" and #result > 10 then
+            source = result
+            break
+        end
+        if attempt < 3 then task.wait(0.35 * attempt) end
+    end
+    if not source then
         error("Не удалось загрузить модуль: " .. relativePath, 0)
     end
 
@@ -73,6 +81,16 @@ local function loadModule(relativePath)
     return module
 end
 
+-- Defined BEFORE the xpcall block. In v0.4.0 it was first used above its
+-- own declaration, which crashed every launch with
+-- "attempt to call a nil value" at line 79.
+local function loadingStep(progress, text)
+    if state.Loader and state.Loader.Set then
+        pcall(state.Loader.Set, state.Loader, progress, text)
+    end
+    task.wait()
+end
+
 local success, failure = xpcall(function()
     local Config = loadModule("modules/config.lua")
 
@@ -81,14 +99,16 @@ local success, failure = xpcall(function()
     state.Stealth = Stealth
     Stealth.SafeTeleport = Config.Settings.SafeTeleport
     Stealth.GlideSpeed = Config.Settings.GlideSpeed
+    if Config.Settings.BlockKick ~= false then
+        task.spawn(function()
+            if Stealth.InstallKickGuard and Stealth.InstallKickGuard() then
+                print("[MilfaCheatHUB] Anti-kick guard активен")
+            end
+        end)
+    end
 
     local UI = loadModule("modules/ui.lua")
     state.Loader = UI.ShowLoader(Config, Stealth)
-
-    local function loadingStep(progress, text)
-        if state.Loader then state.Loader:Set(progress, text) end
-        task.wait()
-    end
 
     loadingStep(0.12, "Стелс: " .. tostring(Stealth.MountKind) .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
 
