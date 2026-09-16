@@ -1,26 +1,42 @@
--- MilfaCheatHUB • reusable neon interface
+-- MilfaCheatHUB • compact neon interface v0.2
 
 local UI = {}
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 
-local function guiParent()
-    if gethui then
-        local ok, value = pcall(gethui)
-        if ok and value then return value end
-    end
-    return CoreGui or Players.LocalPlayer:WaitForChild("PlayerGui")
+local function environment()
+    return (getgenv and getgenv()) or _G
 end
 
-local function addCorner(parent, radius)
+local function mount(gui)
+    local targets = {}
+    if gethui then
+        local ok, value = pcall(gethui)
+        if ok and value then targets[#targets + 1] = value end
+    end
+    targets[#targets + 1] = CoreGui
+    local player = Players.LocalPlayer
+    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
+
+    for _, target in ipairs(targets) do
+        if target then
+            local ok = pcall(function() gui.Parent = target end)
+            if ok and gui.Parent then return true end
+        end
+    end
+    return false
+end
+
+local function corner(parent, radius)
     local object = Instance.new("UICorner")
     object.CornerRadius = UDim.new(0, radius or 8)
     object.Parent = parent
     return object
 end
 
-local function addStroke(parent, color, thickness, transparency)
+local function stroke(parent, color, thickness, transparency)
     local object = Instance.new("UIStroke")
     object.Color = color
     object.Thickness = thickness or 1
@@ -29,39 +45,85 @@ local function addStroke(parent, color, thickness, transparency)
     return object
 end
 
-local function resolveIcon(url)
-    if not (writefile and getcustomasset) then return nil end
-    local requestFn = request or http_request or (syn and syn.request)
-    if not requestFn then return nil end
-
-    local folder = "MilfaCheatHUB"
-    local path = folder .. "/icon.png"
-    pcall(function()
-        if makefolder and not (isfolder and isfolder(folder)) then makefolder(folder) end
-    end)
-
-    if not (isfile and isfile(path)) then
-        local ok, response = pcall(requestFn, {Url = url, Method = "GET"})
-        local body = ok and response and (response.Body or response.body)
-        if body then pcall(writefile, path, body) end
-    end
-
-    local ok, asset = pcall(getcustomasset, path)
-    return ok and asset or nil
+local function gradient(parent, first, second, rotation)
+    local object = Instance.new("UIGradient")
+    object.Color = ColorSequence.new(first, second)
+    object.Rotation = rotation or 0
+    object.Parent = parent
+    return object
 end
 
-local function createLogo(parent, config, size, position)
+local function loadIconAsync(url, callback)
+    local env = environment()
+    if env.MilfaCheatHUBIconAsset then
+        callback(env.MilfaCheatHUBIconAsset)
+        return
+    end
+
+    if env.MilfaCheatHUBIconLoading then
+        task.spawn(function()
+            for _ = 1, 80 do
+                if env.MilfaCheatHUBIconAsset then
+                    callback(env.MilfaCheatHUBIconAsset)
+                    return
+                end
+                if not env.MilfaCheatHUBIconLoading then return end
+                task.wait(0.1)
+            end
+        end)
+        return
+    end
+
+    env.MilfaCheatHUBIconLoading = true
+    task.spawn(function()
+        local asset
+        if writefile and getcustomasset then
+            local requestFn = request or http_request or (syn and syn.request)
+            if requestFn then
+                local folder = "MilfaCheatHUB"
+                local path = folder .. "/icon.png"
+                pcall(function()
+                    if makefolder and not (isfolder and isfolder(folder)) then makefolder(folder) end
+                end)
+                if not (isfile and isfile(path)) then
+                    local ok, response = pcall(requestFn, {Url = url, Method = "GET"})
+                    local body = ok and response and (response.Body or response.body)
+                    if body then pcall(writefile, path, body) end
+                end
+                local ok, result = pcall(getcustomasset, path)
+                if ok then asset = result end
+            end
+        end
+        env.MilfaCheatHUBIconAsset = asset
+        env.MilfaCheatHUBIconLoading = false
+        if asset then callback(asset) end
+    end)
+end
+
+local function createLogo(parent, config, size, position, circular)
     local holder = Instance.new("Frame")
     holder.Size = size
     holder.Position = position
     holder.BackgroundColor3 = config.Colors.Panel2
     holder.BorderSizePixel = 0
+    holder.ClipsDescendants = true
     holder.Parent = parent
-    addCorner(holder, 11)
-    addStroke(holder, config.Colors.Accent, 1.4, 0.2)
+    corner(holder, circular and 999 or 10)
+    stroke(holder, config.Colors.Accent, 1.4, 0.18)
+    gradient(holder, config.Colors.Panel2, config.Colors.Background, 35)
 
-    local asset = resolveIcon(config.IconUrl)
-    if asset then
+    local fallback = Instance.new("TextLabel")
+    fallback.Size = UDim2.fromScale(1, 1)
+    fallback.BackgroundTransparency = 1
+    fallback.Text = "M"
+    fallback.TextColor3 = config.Colors.Accent
+    fallback.Font = Enum.Font.Code
+    fallback.TextSize = math.max(16, math.floor(size.X.Offset * 0.5))
+    fallback.Parent = holder
+
+    loadIconAsync(config.IconUrl, function(asset)
+        if not holder.Parent then return end
+        fallback.Visible = false
         local image = Instance.new("ImageLabel")
         image.Size = UDim2.new(1, -6, 1, -6)
         image.Position = UDim2.fromOffset(3, 3)
@@ -69,17 +131,8 @@ local function createLogo(parent, config, size, position)
         image.Image = asset
         image.ScaleType = Enum.ScaleType.Fit
         image.Parent = holder
-        addCorner(image, 9)
-    else
-        local fallback = Instance.new("TextLabel")
-        fallback.Size = UDim2.fromScale(1, 1)
-        fallback.BackgroundTransparency = 1
-        fallback.Text = "M"
-        fallback.TextColor3 = config.Colors.Accent
-        fallback.Font = Enum.Font.Code
-        fallback.TextSize = math.max(18, math.floor(size.X.Offset * 0.55))
-        fallback.Parent = holder
-    end
+        corner(image, circular and 999 or 8)
+    end)
     return holder
 end
 
@@ -89,243 +142,333 @@ function UI.ShowLoader(config)
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.DisplayOrder = 999999
-    gui.Parent = guiParent()
+    if not mount(gui) then error("MilfaCheatHUB: GUI mount failed") end
 
     local card = Instance.new("Frame")
-    card.Size = UDim2.fromOffset(410, 174)
-    card.Position = UDim2.new(0.5, -205, 0.5, -87)
+    card.Size = UDim2.fromOffset(360, 142)
+    card.Position = UDim2.new(0.5, -180, 0.5, -71)
     card.BackgroundColor3 = config.Colors.Background
-    card.BackgroundTransparency = 0.04
+    card.BackgroundTransparency = 0.025
     card.BorderSizePixel = 0
     card.Parent = gui
-    addCorner(card, 16)
-    addStroke(card, config.Colors.Accent, 1.6, 0.2)
+    corner(card, 15)
+    stroke(card, config.Colors.Accent, 1.4, 0.18)
+    gradient(card, config.Colors.Panel, config.Colors.Background, 120)
 
-    local glow = Instance.new("ImageLabel")
-    glow.Size = UDim2.new(1, 70, 1, 70)
-    glow.Position = UDim2.fromOffset(-35, -35)
-    glow.BackgroundTransparency = 1
-    glow.Image = "rbxassetid://5028857084"
-    glow.ImageColor3 = config.Colors.Accent
-    glow.ImageTransparency = 0.72
-    glow.ScaleType = Enum.ScaleType.Slice
-    glow.SliceCenter = Rect.new(24, 24, 276, 276)
-    glow.ZIndex = 0
-    glow.Parent = card
-
-    createLogo(card, config, UDim2.fromOffset(64, 64), UDim2.fromOffset(24, 22))
+    createLogo(card, config, UDim2.fromOffset(54, 54), UDim2.fromOffset(20, 18), false)
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -120, 0, 30)
-    title.Position = UDim2.fromOffset(104, 25)
+    title.Size = UDim2.new(1, -102, 0, 26)
+    title.Position = UDim2.fromOffset(88, 20)
     title.BackgroundTransparency = 1
     title.Text = config.Name
     title.TextColor3 = config.Colors.Text
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Font = Enum.Font.Code
-    title.TextSize = 22
+    title.TextSize = 19
     title.Parent = card
 
     local subtitle = Instance.new("TextLabel")
-    subtitle.Size = UDim2.new(1, -120, 0, 20)
-    subtitle.Position = UDim2.fromOffset(104, 56)
+    subtitle.Size = UDim2.new(1, -102, 0, 18)
+    subtitle.Position = UDim2.fromOffset(88, 47)
     subtitle.BackgroundTransparency = 1
     subtitle.Text = config.Game .. "  •  v" .. config.Version
     subtitle.TextColor3 = config.Colors.Muted
     subtitle.TextXAlignment = Enum.TextXAlignment.Left
     subtitle.Font = Enum.Font.Gotham
-    subtitle.TextSize = 12
+    subtitle.TextSize = 10
     subtitle.Parent = card
 
     local bar = Instance.new("Frame")
-    bar.Size = UDim2.new(1, -48, 0, 8)
-    bar.Position = UDim2.new(0, 24, 1, -49)
+    bar.Size = UDim2.new(1, -40, 0, 6)
+    bar.Position = UDim2.new(0, 20, 1, -38)
     bar.BackgroundColor3 = config.Colors.Panel2
     bar.BorderSizePixel = 0
     bar.ClipsDescendants = true
     bar.Parent = card
-    addCorner(bar, 8)
+    corner(bar, 6)
 
     local fill = Instance.new("Frame")
     fill.Size = UDim2.fromScale(0, 1)
     fill.BackgroundColor3 = config.Colors.Accent
     fill.BorderSizePixel = 0
     fill.Parent = bar
-    addCorner(fill, 8)
+    corner(fill, 6)
+    gradient(fill, config.Colors.Movement, config.Colors.Accent, 0)
 
     local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(1, -48, 0, 18)
-    status.Position = UDim2.new(0, 24, 1, -34)
+    status.Size = UDim2.new(1, -40, 0, 16)
+    status.Position = UDim2.new(0, 20, 1, -27)
     status.BackgroundTransparency = 1
     status.Text = "Запуск..."
     status.TextColor3 = config.Colors.Muted
     status.TextXAlignment = Enum.TextXAlignment.Left
-    status.Font = Enum.Font.Gotham
-    status.TextSize = 11
+    status.Font = Enum.Font.Code
+    status.TextSize = 9
     status.Parent = card
 
     local controller = {}
     function controller:Set(progress, text)
+        if not gui.Parent then return end
         status.Text = text or status.Text
-        TweenService:Create(fill, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {
+        TweenService:Create(fill, TweenInfo.new(0.16, Enum.EasingStyle.Quad), {
             Size = UDim2.fromScale(math.clamp(progress, 0, 1), 1)
         }):Play()
     end
-    function controller:Destroy() if gui then gui:Destroy() end end
+    function controller:Destroy()
+        if gui then gui:Destroy() end
+    end
     return controller
 end
 
 function UI.new(config)
-    local self = {Config = config, Tabs = {}, Active = nil, Connections = {}}
+    local self = {Config = config, Tabs = {}, Connections = {}, Active = nil, CloseCallback = nil}
     local colors = config.Colors
+    local width = config.Window.Width
+    local height = config.Window.Height
+    local sidebarWidth = config.Window.SidebarWidth
 
     local gui = Instance.new("ScreenGui")
     gui.Name = "MilfaCheatHUB_StealAnEgg"
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.DisplayOrder = 99999
-    gui.Parent = guiParent()
+    if not mount(gui) then error("MilfaCheatHUB: GUI mount failed") end
     self.Gui = gui
 
     local main = Instance.new("Frame")
-    main.Size = UDim2.fromOffset(660, 438)
-    main.Position = UDim2.new(0.5, -330, 0.5, -219)
+    main.Size = UDim2.fromOffset(width, height)
+    main.Position = UDim2.new(0.5, -math.floor(width / 2), 0.5, -math.floor(height / 2))
     main.BackgroundColor3 = colors.Background
-    main.BackgroundTransparency = 0.035
+    main.BackgroundTransparency = 0.02
     main.BorderSizePixel = 0
     main.Active = true
     main.Draggable = true
     main.Parent = gui
-    addCorner(main, 15)
-    addStroke(main, colors.Border, 1.3, 0.05)
+    corner(main, 14)
+    stroke(main, colors.Border, 1.2, 0.08)
+    gradient(main, colors.Panel, colors.Background, 120)
     self.Main = main
 
+    local scale = Instance.new("UIScale")
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(1280, 720)
+    scale.Scale = math.min(1, (viewport.X - 30) / width, (viewport.Y - 30) / height)
+    scale.Parent = main
+
     local sidebar = Instance.new("Frame")
-    sidebar.Size = UDim2.new(0, 182, 1, 0)
+    sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
     sidebar.BackgroundColor3 = colors.Panel
     sidebar.BackgroundTransparency = 0.08
     sidebar.BorderSizePixel = 0
     sidebar.Parent = main
-    addCorner(sidebar, 15)
+    corner(sidebar, 14)
 
-    createLogo(sidebar, config, UDim2.fromOffset(46, 46), UDim2.fromOffset(16, 14))
+    local accentLine = Instance.new("Frame")
+    accentLine.Size = UDim2.new(0, 2, 1, -20)
+    accentLine.Position = UDim2.new(1, -1, 0, 10)
+    accentLine.BackgroundColor3 = colors.Accent
+    accentLine.BackgroundTransparency = 0.35
+    accentLine.BorderSizePixel = 0
+    accentLine.Parent = sidebar
+    gradient(accentLine, colors.Movement, colors.Accent, 90)
+
+    createLogo(sidebar, config, UDim2.fromOffset(38, 38), UDim2.fromOffset(12, 12), false)
 
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, -76, 0, 25)
-    title.Position = UDim2.fromOffset(72, 14)
+    title.Size = UDim2.new(1, -60, 0, 22)
+    title.Position = UDim2.fromOffset(58, 12)
     title.BackgroundTransparency = 1
-    title.Text = config.Name
+    title.Text = "MilfaCheatHUB"
     title.TextColor3 = colors.Text
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.Font = Enum.Font.Code
-    title.TextSize = 14
+    title.TextSize = 11
     title.Parent = sidebar
 
     local subtitle = Instance.new("TextLabel")
-    subtitle.Size = UDim2.new(1, -76, 0, 18)
-    subtitle.Position = UDim2.fromOffset(72, 39)
+    subtitle.Size = UDim2.new(1, -60, 0, 15)
+    subtitle.Position = UDim2.fromOffset(58, 33)
     subtitle.BackgroundTransparency = 1
-    subtitle.Text = config.Game
+    subtitle.Text = "STEAL AN EGG"
     subtitle.TextColor3 = colors.Muted
     subtitle.TextXAlignment = Enum.TextXAlignment.Left
-    subtitle.Font = Enum.Font.Gotham
-    subtitle.TextSize = 10
+    subtitle.Font = Enum.Font.Code
+    subtitle.TextSize = 8
     subtitle.Parent = sidebar
 
     local nav = Instance.new("Frame")
-    nav.Size = UDim2.new(1, -20, 1, -98)
-    nav.Position = UDim2.fromOffset(10, 76)
+    nav.Size = UDim2.new(1, -16, 1, -78)
+    nav.Position = UDim2.fromOffset(8, 64)
     nav.BackgroundTransparency = 1
     nav.Parent = sidebar
     local navList = Instance.new("UIListLayout")
-    navList.Padding = UDim.new(0, 6)
+    navList.Padding = UDim.new(0, 5)
     navList.Parent = nav
 
+    local header = Instance.new("Frame")
+    header.Size = UDim2.new(1, -sidebarWidth - 14, 0, 40)
+    header.Position = UDim2.fromOffset(sidebarWidth + 8, 6)
+    header.BackgroundTransparency = 1
+    header.Parent = main
+
+    local pageTitle = Instance.new("TextLabel")
+    pageTitle.Size = UDim2.new(1, -78, 1, 0)
+    pageTitle.BackgroundTransparency = 1
+    pageTitle.Text = "ЯЙЦА"
+    pageTitle.TextColor3 = colors.Text
+    pageTitle.TextXAlignment = Enum.TextXAlignment.Left
+    pageTitle.Font = Enum.Font.Code
+    pageTitle.TextSize = 15
+    pageTitle.Parent = header
+
+    local function topButton(text, offset, color)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.fromOffset(28, 26)
+        button.Position = UDim2.new(1, offset, 0, 5)
+        button.BackgroundColor3 = colors.Panel2
+        button.BorderSizePixel = 0
+        button.Text = text
+        button.TextColor3 = color
+        button.Font = Enum.Font.GothamBold
+        button.TextSize = 15
+        button.Parent = header
+        corner(button, 7)
+        stroke(button, color, 1, 0.55)
+        return button
+    end
+
+    local hideButton = topButton("–", -66, colors.Misc)
+    local closeButton = topButton("×", -32, colors.Danger)
+
     local content = Instance.new("Frame")
-    content.Size = UDim2.new(1, -202, 1, -62)
-    content.Position = UDim2.fromOffset(196, 16)
+    content.Size = UDim2.new(1, -sidebarWidth - 18, 1, -58)
+    content.Position = UDim2.fromOffset(sidebarWidth + 10, 46)
     content.BackgroundTransparency = 1
     content.Parent = main
 
-    local footer = Instance.new("TextLabel")
-    footer.Size = UDim2.new(1, -210, 0, 20)
-    footer.Position = UDim2.new(0, 196, 1, -27)
-    footer.BackgroundTransparency = 1
-    footer.Text = "● v" .. config.Version .. "  •  RightControl — скрыть/показать"
-    footer.TextColor3 = colors.Muted
-    footer.TextXAlignment = Enum.TextXAlignment.Left
-    footer.Font = Enum.Font.Code
-    footer.TextSize = 10
-    footer.Parent = main
+    local bubble = Instance.new("TextButton")
+    bubble.Name = "MilfaCheatHUB_Bubble"
+    bubble.Size = UDim2.fromOffset(54, 54)
+    bubble.Position = UDim2.new(0, 18, 0.5, -27)
+    bubble.BackgroundColor3 = colors.Background
+    bubble.BorderSizePixel = 0
+    bubble.Text = ""
+    bubble.Visible = false
+    bubble.Active = true
+    bubble.Draggable = true
+    bubble.Parent = gui
+    corner(bubble, 999)
+    stroke(bubble, colors.Accent, 2, 0.08)
+    gradient(bubble, colors.Panel2, colors.Background, 45)
+    createLogo(bubble, config, UDim2.fromOffset(44, 44), UDim2.fromOffset(5, 5), true)
+    self.Bubble = bubble
 
-    local close = Instance.new("TextButton")
-    close.Size = UDim2.fromOffset(28, 28)
-    close.Position = UDim2.new(1, -38, 0, 10)
-    close.BackgroundColor3 = colors.Panel2
-    close.BorderSizePixel = 0
-    close.Text = "×"
-    close.TextColor3 = colors.Text
-    close.Font = Enum.Font.GothamBold
-    close.TextSize = 18
-    close.Parent = main
-    addCorner(close, 8)
-    close.MouseButton1Click:Connect(function()
-        local env = (getgenv and getgenv()) or _G
-        if env.MilfaCheatHUBCleanup then env.MilfaCheatHUBCleanup() end
+    function self:Hide()
+        main.Visible = false
+        bubble.Visible = true
+    end
+
+    function self:Show()
+        bubble.Visible = false
+        main.Visible = true
+    end
+
+    function self:ToggleVisibility()
+        if main.Visible then self:Hide() else self:Show() end
+    end
+
+    function self:SetCloseCallback(callback)
+        self.CloseCallback = callback
+    end
+
+    hideButton.MouseButton1Click:Connect(function() self:Hide() end)
+    bubble.MouseButton1Click:Connect(function() self:Show() end)
+    closeButton.MouseButton1Click:Connect(function()
+        if self.CloseCallback then self.CloseCallback() else self:Destroy() end
     end)
 
-    self.Connections[#self.Connections + 1] = game:GetService("UserInputService").InputBegan:Connect(function(input, processed)
-        if not processed and input.KeyCode == config.Settings.ToggleKey then
-            main.Visible = not main.Visible
-        end
+    self.Connections[#self.Connections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
+        if not processed and input.KeyCode == config.Settings.ToggleKey then self:ToggleVisibility() end
     end)
 
-    function self:CreateTab(name, glyph, accent)
+    function self:CreateTab(name, badgeText, accent)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, 0, 0, 38)
+        button.Size = UDim2.new(1, 0, 0, 34)
         button.BackgroundColor3 = colors.Panel2
-        button.BackgroundTransparency = 0.5
+        button.BackgroundTransparency = 0.52
         button.BorderSizePixel = 0
-        button.Text = (glyph or "◆") .. "  " .. name
-        button.TextColor3 = colors.Muted
-        button.TextXAlignment = Enum.TextXAlignment.Left
-        button.Font = Enum.Font.Code
-        button.TextSize = 12
+        button.Text = ""
         button.Parent = nav
-        addCorner(button, 8)
-        local pad = Instance.new("UIPadding")
-        pad.PaddingLeft = UDim.new(0, 12)
-        pad.Parent = button
+        corner(button, 8)
+
+        local badge = Instance.new("Frame")
+        badge.Size = UDim2.fromOffset(34, 22)
+        badge.Position = UDim2.fromOffset(6, 6)
+        badge.BackgroundColor3 = accent or colors.Accent
+        badge.BackgroundTransparency = 0.78
+        badge.BorderSizePixel = 0
+        badge.Parent = button
+        corner(badge, 6)
+        stroke(badge, accent or colors.Accent, 1, 0.35)
+
+        local badgeLabel = Instance.new("TextLabel")
+        badgeLabel.Size = UDim2.fromScale(1, 1)
+        badgeLabel.BackgroundTransparency = 1
+        badgeLabel.Text = string.upper(badgeText or "TAB")
+        badgeLabel.TextColor3 = accent or colors.Accent
+        badgeLabel.Font = Enum.Font.Code
+        badgeLabel.TextSize = 8
+        badgeLabel.Parent = badge
+
+        local textLabel = Instance.new("TextLabel")
+        textLabel.Size = UDim2.new(1, -48, 1, 0)
+        textLabel.Position = UDim2.fromOffset(47, 0)
+        textLabel.BackgroundTransparency = 1
+        textLabel.Text = name
+        textLabel.TextColor3 = colors.Muted
+        textLabel.TextXAlignment = Enum.TextXAlignment.Left
+        textLabel.Font = Enum.Font.Code
+        textLabel.TextSize = 10
+        textLabel.Parent = button
 
         local page = Instance.new("ScrollingFrame")
         page.Size = UDim2.fromScale(1, 1)
         page.BackgroundTransparency = 1
         page.BorderSizePixel = 0
-        page.ScrollBarThickness = 3
+        page.ScrollBarThickness = 2
         page.ScrollBarImageColor3 = accent or colors.Accent
         page.AutomaticCanvasSize = Enum.AutomaticSize.Y
         page.CanvasSize = UDim2.new()
         page.Visible = false
         page.Parent = content
         local list = Instance.new("UIListLayout")
-        list.Padding = UDim.new(0, 8)
+        list.Padding = UDim.new(0, 6)
         list.Parent = page
         local padding = Instance.new("UIPadding")
-        padding.PaddingRight = UDim.new(0, 5)
+        padding.PaddingRight = UDim.new(0, 4)
         padding.Parent = page
 
-        local tab = {Button = button, Page = page, Accent = accent or colors.Accent}
+        local tab = {
+            Name = name,
+            Button = button,
+            Label = textLabel,
+            Page = page,
+            Accent = accent or colors.Accent,
+        }
         self.Tabs[#self.Tabs + 1] = tab
 
         local function selectTab()
             for _, item in ipairs(self.Tabs) do
                 item.Page.Visible = false
-                item.Button.TextColor3 = colors.Muted
-                item.Button.BackgroundTransparency = 0.5
+                item.Label.TextColor3 = colors.Muted
+                item.Button.BackgroundTransparency = 0.52
             end
             page.Visible = true
-            button.TextColor3 = tab.Accent
-            button.BackgroundTransparency = 0.08
+            textLabel.TextColor3 = tab.Accent
+            button.BackgroundTransparency = 0.1
+            pageTitle.Text = string.upper(name)
+            pageTitle.TextColor3 = tab.Accent
             self.Active = tab
         end
         button.MouseButton1Click:Connect(selectTab)
@@ -335,41 +478,50 @@ function UI.new(config)
 
     function self:AddHeading(tab, text)
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -2, 0, 30)
+        label.Size = UDim2.new(1, -2, 0, 24)
         label.BackgroundTransparency = 1
         label.Text = text
         label.TextColor3 = tab.Accent
         label.TextXAlignment = Enum.TextXAlignment.Left
         label.Font = Enum.Font.Code
-        label.TextSize = 17
+        label.TextSize = 13
         label.Parent = tab.Page
         return label
     end
 
     function self:AddText(tab, titleText, bodyText)
         local card = Instance.new("Frame")
-        card.Size = UDim2.new(1, -2, 0, 66)
+        card.Size = UDim2.new(1, -2, 0, 58)
         card.BackgroundColor3 = colors.Panel
-        card.BackgroundTransparency = 0.1
+        card.BackgroundTransparency = 0.08
         card.BorderSizePixel = 0
         card.Parent = tab.Page
-        addCorner(card, 9)
-        addStroke(card, colors.Border, 1, 0.35)
+        corner(card, 8)
+        stroke(card, colors.Border, 1, 0.38)
+        gradient(card, colors.Panel2, colors.Panel, 15)
+
+        local marker = Instance.new("Frame")
+        marker.Size = UDim2.fromOffset(2, 38)
+        marker.Position = UDim2.fromOffset(7, 10)
+        marker.BackgroundColor3 = tab.Accent
+        marker.BorderSizePixel = 0
+        marker.Parent = card
+        corner(marker, 2)
 
         local titleLabel = Instance.new("TextLabel")
-        titleLabel.Size = UDim2.new(1, -20, 0, 24)
-        titleLabel.Position = UDim2.fromOffset(10, 7)
+        titleLabel.Size = UDim2.new(1, -24, 0, 20)
+        titleLabel.Position = UDim2.fromOffset(16, 5)
         titleLabel.BackgroundTransparency = 1
         titleLabel.Text = titleText
         titleLabel.TextColor3 = colors.Text
         titleLabel.TextXAlignment = Enum.TextXAlignment.Left
         titleLabel.Font = Enum.Font.Code
-        titleLabel.TextSize = 12
+        titleLabel.TextSize = 10
         titleLabel.Parent = card
 
         local body = Instance.new("TextLabel")
-        body.Size = UDim2.new(1, -20, 0, 30)
-        body.Position = UDim2.fromOffset(10, 30)
+        body.Size = UDim2.new(1, -24, 0, 28)
+        body.Position = UDim2.fromOffset(16, 25)
         body.BackgroundTransparency = 1
         body.Text = bodyText or ""
         body.TextColor3 = colors.Muted
@@ -377,7 +529,7 @@ function UI.new(config)
         body.TextYAlignment = Enum.TextYAlignment.Top
         body.TextWrapped = true
         body.Font = Enum.Font.Gotham
-        body.TextSize = 10
+        body.TextSize = 9
         body.Parent = card
 
         return {
@@ -388,20 +540,23 @@ function UI.new(config)
 
     function self:AddButton(tab, text, callback)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -2, 0, 38)
+        button.Size = UDim2.new(1, -2, 0, 34)
         button.BackgroundColor3 = colors.Panel2
         button.BorderSizePixel = 0
-        button.Text = text
+        button.Text = "  ◆  " .. text
         button.TextColor3 = colors.Text
+        button.TextXAlignment = Enum.TextXAlignment.Left
         button.Font = Enum.Font.Code
-        button.TextSize = 12
+        button.TextSize = 10
         button.Parent = tab.Page
-        addCorner(button, 8)
-        addStroke(button, tab.Accent, 1, 0.5)
+        corner(button, 8)
+        stroke(button, tab.Accent, 1, 0.52)
         button.MouseButton1Click:Connect(function()
-            TweenService:Create(button, TweenInfo.new(0.12), {BackgroundColor3 = tab.Accent}):Play()
-            task.delay(0.16, function()
-                if button.Parent then TweenService:Create(button, TweenInfo.new(0.18), {BackgroundColor3 = colors.Panel2}):Play() end
+            TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = tab.Accent}):Play()
+            task.delay(0.14, function()
+                if button.Parent then
+                    TweenService:Create(button, TweenInfo.new(0.16), {BackgroundColor3 = colors.Panel2}):Play()
+                end
             end)
             task.spawn(callback)
         end)
@@ -411,29 +566,51 @@ function UI.new(config)
     function self:AddToggle(tab, text, default, callback)
         local state = default == true
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -2, 0, 38)
+        button.Size = UDim2.new(1, -2, 0, 34)
         button.BackgroundColor3 = colors.Panel
         button.BorderSizePixel = 0
-        button.TextColor3 = colors.Text
-        button.TextXAlignment = Enum.TextXAlignment.Left
-        button.Font = Enum.Font.Code
-        button.TextSize = 12
+        button.Text = ""
         button.Parent = tab.Page
-        addCorner(button, 8)
-        local pad = Instance.new("UIPadding")
-        pad.PaddingLeft = UDim.new(0, 12)
-        pad.Parent = button
+        corner(button, 8)
 
-        local function render()
-            button.Text = text .. (state and "    [ ON ]" or "    [ OFF ]")
-            button.TextColor3 = state and tab.Accent or colors.Text
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -58, 1, 0)
+        label.Position = UDim2.fromOffset(11, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = colors.Text
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Font = Enum.Font.Code
+        label.TextSize = 10
+        label.Parent = button
+
+        local track = Instance.new("Frame")
+        track.Size = UDim2.fromOffset(34, 18)
+        track.Position = UDim2.new(1, -44, 0.5, -9)
+        track.BorderSizePixel = 0
+        track.Parent = button
+        corner(track, 999)
+
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.fromOffset(14, 14)
+        knob.Position = UDim2.fromOffset(2, 2)
+        knob.BackgroundColor3 = colors.Text
+        knob.BorderSizePixel = 0
+        knob.Parent = track
+        corner(knob, 999)
+
+        local function render(animated)
+            local info = TweenInfo.new(animated and 0.16 or 0)
+            TweenService:Create(track, info, {BackgroundColor3 = state and tab.Accent or colors.Panel2}):Play()
+            TweenService:Create(knob, info, {Position = state and UDim2.fromOffset(18, 2) or UDim2.fromOffset(2, 2)}):Play()
+            label.TextColor3 = state and tab.Accent or colors.Text
         end
         button.MouseButton1Click:Connect(function()
             state = not state
-            render()
+            render(true)
             callback(state)
         end)
-        render()
+        render(false)
         return button
     end
 
@@ -441,7 +618,9 @@ function UI.new(config)
 end
 
 function UI:Destroy()
-    for _, connection in ipairs(self.Connections or {}) do pcall(function() connection:Disconnect() end) end
+    for _, connection in ipairs(self.Connections or {}) do
+        pcall(function() connection:Disconnect() end)
+    end
     if self.Gui then self.Gui:Destroy() end
 end
 
