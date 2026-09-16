@@ -1,9 +1,9 @@
 -- MilfaCheatHUB • Steal An Egg
--- Stable modular entry point v0.4.1 (stealth hotfix).
+-- Stable modular entry point v0.5.0 (anticheat bypass).
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.4.1"
+local VERSION = "0.5.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -99,13 +99,16 @@ local success, failure = xpcall(function()
     state.Stealth = Stealth
     Stealth.SafeTeleport = Config.Settings.SafeTeleport
     Stealth.GlideSpeed = Config.Settings.GlideSpeed
-    if Config.Settings.BlockKick ~= false then
-        task.spawn(function()
-            if Stealth.InstallKickGuard and Stealth.InstallKickGuard() then
-                print("[MilfaCheatHUB] Anti-kick guard активен")
-            end
-        end)
-    end
+    loadingStep(0.10, "Обходим античит (BAC)...")
+    local AntiCheat = loadModule("modules/anticheat.lua")
+    state.AntiCheat = AntiCheat
+    Stealth.AntiCheat = AntiCheat
+    task.spawn(function()
+        AntiCheat.Init(Stealth, Config.Settings)
+        if AntiCheat.Status.NamecallHooked then
+            print("[MilfaCheatHUB] Обход античита активен: кик-гард + маскировка проб + getgc")
+        end
+    end)
 
     local UI = loadModule("modules/ui.lua")
     state.Loader = UI.ShowLoader(Config, Stealth)

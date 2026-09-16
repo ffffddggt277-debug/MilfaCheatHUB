@@ -1,10 +1,10 @@
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.4.1 (stealth hotfix)
+-- Shared branding, palette, paths and defaults. v0.5.0 (anticheat bypass)
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.4.1",
+    Version = "0.5.0",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -133,6 +133,9 @@ return {
         StealthSpeedValue = 32,    -- ст/с для стелс-скорости (держи < 60)
         MaxHatchPerTick = 4,       -- лимит AskHatch за такт (было 8)
         BlockKick = true,          -- блокировать клиентский LocalPlayer:Kick
+        FreezeACStates = true,     -- заморозка состояний античита (getgc, метод Phemonaz)
+        BlindSamplers = true,      -- ослепить сэмплер WalkSpeed (ContentCatalog.Runtime)
+        MaskHttpProbes = true,     -- HttpGet/HttpPost пробы игры отвечаем как vanilla-клиент
 
         -- Player
         WalkSpeed = 16,

@@ -1,4 +1,4 @@
--- MilfaCheatHUB • local player tweaks (stealth v0.4)
+-- MilfaCheatHUB • local player tweaks (stealth v0.5)
 -- Speed without touching Humanoid.WalkSpeed (CFrame glide), jump, infinite jump,
 -- noclip, glide click-TP, anti-AFK. BAC-safe by default.
 
@@ -30,12 +30,21 @@ end
 -- Stealth mode: does nothing — speed comes from CFrame glide below.
 function Player:ApplySpeed()
     local settings = self.Config.Settings
-    if settings.StealthSpeed then return end
+    if settings.StealthSpeed then
+        if self.Stealth and self.Stealth.AntiCheat then
+            self.Stealth.AntiCheat.EnableSpeedLock(nil)
+        end
+        return
+    end
     local humanoid = self:GetHumanoid()
     if humanoid then
         humanoid.UseJumpPower = true
         humanoid.WalkSpeed = settings.WalkSpeed or 16
         humanoid.JumpPower = settings.JumpPower or 50
+        -- Lock the value so the anticheat cannot reset it (rscripts method).
+        if self.Stealth and self.Stealth.AntiCheat then
+            self.Stealth.AntiCheat.EnableSpeedLock(settings.WalkSpeed or 16)
+        end
     end
 end
 
@@ -79,6 +88,9 @@ function Player:ResetSpeed()
     settings.WalkSpeed = 16
     settings.JumpPower = 50
     settings.StealthSpeed = false
+    if self.Stealth and self.Stealth.AntiCheat then
+        self.Stealth.AntiCheat.EnableSpeedLock(nil)
+    end
     local humanoid = self:GetHumanoid()
     if humanoid then
         humanoid.UseJumpPower = true

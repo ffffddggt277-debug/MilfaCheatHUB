@@ -304,6 +304,9 @@ function Features:Build()
     self.UI:AddSlider(playerTab, "Классическая скорость (WalkSpeed)", 16, 250, settings.WalkSpeed, "", function(value)
         settings.WalkSpeed = value
         self.Player:ApplySpeed()
+        if self.Stealth and self.Stealth.AntiCheat and not settings.StealthSpeed then
+            self.Stealth.AntiCheat.EnableSpeedLock(value)
+        end
     end)
     self.UI:AddSlider(playerTab, "Прыжок (JumpPower)", 50, 250, settings.JumpPower, "", function(value)
         settings.JumpPower = value
@@ -362,6 +365,43 @@ function Features:Build()
         settings.BlockKick = value
         if self.Stealth then self.Stealth.BlockKick = value end
     end)
+
+    -- ================== ОБХОД АНТИЧИТА (BAC) ==================
+    local AC = self.Stealth and self.Stealth.AntiCheat or nil
+    if AC then
+        local function acStatusText()
+            return "Обход BAC: " .. AC:Summary()
+        end
+        self.ACStatus = self.UI:AddText(systemTab, "Обход античита (BAC-4513)", acStatusText())
+        self.UI:AddToggle(systemTab, "Заморозка состояний античита (getgc)", settings.FreezeACStates, function(value)
+            settings.FreezeACStates = value
+            if value then
+                task.spawn(function()
+                    AC:FreezeStates()
+                    if self.ACStatus then self.ACStatus:Set(acStatusText()) end
+                end)
+            end
+        end)
+        self.UI:AddToggle(systemTab, "Ослепить сэмплер скорости (ContentCatalog.Runtime)", settings.BlindSamplers, function(value)
+            settings.BlindSamplers = value
+            if value then
+                task.spawn(function()
+                    AC:BlindSamplers()
+                    if self.ACStatus then self.ACStatus:Set(acStatusText()) end
+                end)
+            end
+        end)
+        self.UI:AddToggle(systemTab, "Маскировать HttpGet-пробы (как vanilla-клиент)", settings.MaskHttpProbes, function(value)
+            settings.MaskHttpProbes = value
+        end)
+        self.UI:AddButton(systemTab, "Пересканировать античит (getgc)", function()
+            task.spawn(function()
+                if settings.FreezeACStates ~= false then AC:FreezeStates() end
+                if settings.BlindSamplers ~= false then AC:BlindSamplers() end
+                if self.ACStatus then self.ACStatus:Set(acStatusText()) end
+            end)
+        end)
+    end
     self.UI:AddSlider(systemTab, "Лимит AskHatch за такт", 1, 8, settings.MaxHatchPerTick, "", function(value)
         settings.MaxHatchPerTick = value
     end)
@@ -382,7 +422,7 @@ function Features:Build()
         print("[MilfaCheatHUB] Античит-кандидаты: " .. (#lines > 0 and table.concat(lines, " | ") or "не найдены"))
         self.StealthStatus:Set("Античит-кандидаты: " .. #found .. " — см. консоль F9")
     end)
-    self.UI:AddText(systemTab, "Как не словить BAC", "Стелс-скорость ON + SafeTeleport ON + джиттер ON. Держи glide < 70 ст/с и стелс-скорость < 60 ст/с.")
+    self.UI:AddText(systemTab, "Как не словить BAC", "Стелс-скорость ON + SafeTeleport ON + джиттер ON. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер теперь отклоняет — только glide-ходьба.")
 
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())

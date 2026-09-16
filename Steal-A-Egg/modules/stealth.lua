@@ -1,4 +1,4 @@
--- MilfaCheatHUB • stealth core v0.4.0
+-- MilfaCheatHUB • stealth core v0.5.0
 -- Anti-detection layer for BAC-type client anticheats:
 --   1) hidden mount (gethui / CoreGui / disguised PlayerGui) with randomized names
 --   2) smooth CFrame glide instead of instant teleports (server position checks)
@@ -45,48 +45,10 @@ function Stealth.Protect(instance)
 end
 
 ---------------------------------------------------------------------
--- Client kick guard.
--- Some anticheat flows call LocalPlayer:Kick() from CLIENT scripts —
--- that goes through Lua namecall and can be blocked. Server-side kicks
--- do not pass through Lua and cannot be blocked from here.
--- Installed once; toggle live via Stealth.BlockKick.
+-- Client kick guard moved to anticheat.lua (v0.5.0): single __namecall
+-- hook covers Kick + HttpGet probe masking. Toggle: Stealth.BlockKick.
 ---------------------------------------------------------------------
 Stealth.BlockKick = true
-
-function Stealth.InstallKickGuard()
-    if Stealth.KickGuardInstalled then return true end
-    local player = Players.LocalPlayer
-    if not player then return false end
-
-    local installed = false
-
-    -- Path 1: method calls, player:Kick("reason")
-    if hookmetamethod and newcclosure and getnamecallmethod then
-        local ok = pcall(function()
-            local original
-            original = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                if Stealth.BlockKick and self == player and getnamecallmethod() == "Kick" then
-                    warn("[MilfaCheatHUB] Заблокирован клиентский Kick")
-                    return nil
-                end
-                return original(self, ...)
-            end))
-            installed = installed or original ~= nil
-        end)
-        if not ok then installed = false end
-    end
-
-    -- Path 2: direct calls, player.Kick(player, "reason")
-    if hookfunction then
-        pcall(function()
-            local stub = newcclosure and newcclosure(function() return nil end) or function() return nil end
-            hookfunction(player.Kick, stub)
-        end)
-    end
-
-    Stealth.KickGuardInstalled = installed
-    return installed
-end
 
 local function buildTargets()
     local targets = {}
