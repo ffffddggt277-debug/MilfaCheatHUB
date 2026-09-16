@@ -4,11 +4,17 @@
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.1.0",
+    Version = "0.2.0",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
     IconUrl = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/icon.png",
+
+    Window = {
+        Width = 570,
+        Height = 360,
+        SidebarWidth = 148,
+    },
 
     Colors = {
         Background = Color3.fromRGB(8, 7, 13),
@@ -49,7 +55,7 @@ return {
     Settings = {
         EggESP = false,
         ShowDistance = true,
-        RefreshSeconds = 2,
+        RefreshSeconds = 3,
         FpsMode = false,
         ToggleKey = Enum.KeyCode.RightControl,
     },
