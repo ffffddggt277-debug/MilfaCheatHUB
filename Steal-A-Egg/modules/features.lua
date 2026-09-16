@@ -1,5 +1,4 @@
 -- MilfaCheatHUB • feature controller
--- Connects the scanner, positions, ESP and interface.
 
 local Features = {}
 Features.__index = Features
@@ -29,6 +28,7 @@ function Features:SetFpsMode(enabled)
     }
 
     if enabled then
+        local processed = 0
         for _, object in ipairs(workspace:GetDescendants()) do
             if effectClasses[object.ClassName] then
                 self.FpsOriginal[object] = object.Enabled
@@ -37,8 +37,11 @@ function Features:SetFpsMode(enabled)
                 self.FpsOriginal[object] = object.CastShadow
                 object.CastShadow = false
             end
+            processed = processed + 1
+            if processed % 500 == 0 then task.wait() end
         end
     else
+        local processed = 0
         for object, value in pairs(self.FpsOriginal) do
             if object and object.Parent then
                 pcall(function()
@@ -46,29 +49,37 @@ function Features:SetFpsMode(enabled)
                     else object.Enabled = value end
                 end)
             end
+            processed = processed + 1
+            if processed % 500 == 0 then task.wait() end
         end
         self.FpsOriginal = {}
     end
 end
 
+function Features:UpdateEggs()
+    local eggs = self.Scanner:GetEggs()
+    if self.EggStatus then self.EggStatus:Set("Найдено объектов яиц: " .. tostring(#eggs)) end
+    if self.ESP.Enabled then self.ESP:Refresh(eggs, self.Scanner) end
+    return eggs
+end
+
 function Features:Build()
     local colors = self.Config.Colors
-    local eggsTab = self.UI:CreateTab("Яйца", "◇", colors.World)
-    local espTab = self.UI:CreateTab("ESP", "◈", colors.ESP)
-    local pointsTab = self.UI:CreateTab("Точки", "⌖", colors.Movement)
-    local diagnosticsTab = self.UI:CreateTab("Система", "⚙", colors.Misc)
+    local eggsTab = self.UI:CreateTab("Яйца", "EGG", colors.World)
+    local espTab = self.UI:CreateTab("ESP", "ESP", colors.ESP)
+    local pointsTab = self.UI:CreateTab("Точки", "POS", colors.Movement)
+    local diagnosticsTab = self.UI:CreateTab("Система", "SYS", colors.Misc)
 
     self.UI:AddHeading(eggsTab, "Динамический сканер яиц")
-    self.EggStatus = self.UI:AddText(eggsTab, "Состояние", "Ожидание первого сканирования...")
+    self.EggStatus = self.UI:AddText(eggsTab, "Состояние", "Первый скан запускается после открытия GUI")
     self.UI:AddButton(eggsTab, "Обновить список яиц", function()
-        local eggs = self.Scanner:GetEggs()
-        self.EggStatus:Set(self.Scanner:Diagnostics())
-        if self.ESP.Enabled then self.ESP:Refresh(eggs, self.Scanner) end
+        local ok, result = pcall(function() return self:UpdateEggs() end)
+        if not ok then self.EggStatus:Set("Ошибка сканера: " .. tostring(result)) end
     end)
     self.UI:AddText(
         eggsTab,
         "Источник данных",
-        "EggState/EggCmds и Workspace.AreaEggSlotsClient. UID и позиции не записываются постоянно."
+        "EggState/EggCmds и AreaEggSlotsClient. UID и координаты всегда читаются заново."
     )
 
     self.UI:AddHeading(espTab, "Неоновый Egg ESP")
@@ -76,27 +87,22 @@ function Features:Build()
     self.UI:AddToggle(espTab, "Показывать яйца", self.Config.Settings.EggESP, function(value)
         self.Config.Settings.EggESP = value
         self.ESP:SetEnabled(value)
-        self.EspStatus:Set(value and "Включён — обновляется автоматически" or "Выключен")
-        if value then self.ESP:Refresh(self.Scanner:GetEggs(), self.Scanner) end
+        self.EspStatus:Set(value and "Включён • автообновление каждые 3 секунды" or "Выключен")
+        if value then pcall(function() self:UpdateEggs() end) end
     end)
     self.UI:AddText(
         espTab,
-        "Что отображается",
-        "Название, биом и расстояние. Все элементы создаются только на клиенте и удаляются при закрытии GUI."
+        "Отображение",
+        "Название, биом и расстояние. При закрытии все Highlights и подписи удаляются."
     )
 
     self.UI:AddHeading(pointsTab, "Живые позиции карты")
     self.PointStatus = self.UI:AddText(pointsTab, "Результат", self.Positions:Summary())
-    self.PointList = self.UI:AddText(pointsTab, "Первые найденные точки", self.Positions:ListText(3))
+    self.PointList = self.UI:AddText(pointsTab, "Первые точки", self.Positions:ListText(3))
     self.UI:AddButton(pointsTab, "Пересканировать точки", function()
         self.PointStatus:Set(self.Positions:Summary())
         self.PointList:Set(self.Positions:ListText(3))
     end)
-    self.UI:AddText(
-        pointsTab,
-        "Принцип",
-        "База, биомы и граница берутся из живых объектов. Статические координаты используются только как ориентиры."
-    )
 
     self.UI:AddHeading(diagnosticsTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(diagnosticsTab, "Networking", self.Network:Summary())
@@ -106,13 +112,14 @@ function Features:Build()
     self.FpsStatus = self.UI:AddText(diagnosticsTab, "Производительность", "Обычный режим")
     self.UI:AddToggle(diagnosticsTab, "Лёгкий FPS-режим", false, function(value)
         self.Config.Settings.FpsMode = value
+        self.FpsStatus:Set(value and "Применяем настройки..." or "Восстанавливаем настройки...")
         self:SetFpsMode(value)
         self.FpsStatus:Set(value and "Эффекты и тени временно выключены" or "Настройки восстановлены")
     end)
     self.UI:AddText(
         diagnosticsTab,
-        "Сборка 0.1.0",
-        "Первая версия: красивый UI, загрузка icon.png, сканер, точки, диагностика и Egg ESP."
+        "Сборка " .. self.Config.Version,
+        "Компактный UI, асинхронная icon.png, безопасная загрузка, точки, ESP и полный cleanup."
     )
 end
 
@@ -121,11 +128,10 @@ function Features:Start()
     self.Running = true
 
     task.spawn(function()
+        task.wait(0.5)
         while self.Running and self.Alive() do
-            local ok, eggs = pcall(function() return self.Scanner:GetEggs() end)
-            if ok then
-                if self.EggStatus then self.EggStatus:Set(self.Scanner:Diagnostics()) end
-                if self.ESP.Enabled then self.ESP:Refresh(eggs, self.Scanner) end
+            if self.ESP.Enabled then
+                pcall(function() self:UpdateEggs() end)
             end
             task.wait(self.Config.Settings.RefreshSeconds)
         end
@@ -134,7 +140,11 @@ end
 
 function Features:Destroy()
     self.Running = false
-    if self.Config.Settings.FpsMode then self:SetFpsMode(false) end
+    self.ESP:SetEnabled(false)
+    if self.Config.Settings.FpsMode then
+        self.Config.Settings.FpsMode = false
+        self:SetFpsMode(false)
+    end
 end
 
 return Features
