@@ -56,6 +56,10 @@ function Eggs:Scan()
                         Name = tostring(record.AssetCategory or record.EggName or record.DisplayName or uid),
                         Instance = self.Scanner:GetEggInstance(record),
                         State = record.State or "Snapshot",
+                        AssetCategory = record.AssetCategory,
+                        AreaId = record.AreaId,
+                        NestId = record.NestId,
+                        Mutations = record.Mutations,
                     }
                 end
             end
@@ -101,6 +105,10 @@ function Eggs:Scan()
     -- Enrich records
     for _, record in ipairs(records) do
         record.Rarity = self.Rarity.FromRecord(record)
+        if record.Rarity == "Unknown" then
+            local fromInstance = self.Rarity.FromInstance(record.Instance)
+            if fromInstance then record.Rarity = fromInstance end
+        end
         record.Rank = self.Rarity.Rank(record.Rarity)
         local part = partOf(record.Instance)
         record.Part = part
@@ -110,6 +118,51 @@ function Eggs:Scan()
     end
 
     return records
+end
+
+-- First-area eggs REQUIRE FirstAreaSlotKey (e.g. "Forest:Slot_004").
+-- RSpy: AskFieldEggCarry({FirstAreaSlotKey = "Forest:Slot_004", Uid = "FirstAreaEgg_..._Forest:Slot_004"})
+function Eggs:ParseFirstAreaSlotKey(uid, record)
+    local text = tostring(uid or "")
+    local key = string.match(text, "^FirstAreaEgg_%d+_%d+_(.+)$")
+    if key and key ~= "" then return key end
+
+    if type(record) == "table" then
+        local area = record.AreaId or record.Area
+        local nest = record.NestId or record.Nest or record.SlotKey
+        if type(nest) == "string" and string.find(nest, ":", 1, true) then
+            return nest
+        end
+        if type(area) == "string" and type(nest) == "string" and string.find(nest, "Slot_", 1, true) then
+            return area .. ":" .. nest
+        end
+    end
+    return nil
+end
+
+-- Local save state (RS.Shared.Save): Inventory (pets) and EggInventory (eggs).
+function Eggs:GetSave()
+    local scanner = self.Scanner
+    if scanner and type(scanner.GetSave) == "function" then
+        return scanner:GetSave()
+    end
+    return nil
+end
+
+function Eggs:GetEggInventory()
+    local save = self:GetSave()
+    if type(save) == "table" and type(save.EggInventory) == "table" then
+        return save.EggInventory
+    end
+    return nil
+end
+
+function Eggs:GetPetInventory()
+    local save = self:GetSave()
+    if type(save) == "table" and type(save.Inventory) == "table" then
+        return save.Inventory
+    end
+    return nil
 end
 
 function Eggs:Filter(records, options)
@@ -172,29 +225,29 @@ function Eggs:GetHeldEggUid()
     return held:GetAttribute("UID") or held:GetAttribute("Uid") or held.Name, held
 end
 
--- Dynamic sell remote discovery inside Packages.Networking (+ static fallbacks).
+-- Sell remote: RSpy/research-confirmed RE/PetSatchel/SellPet first, then discovery.
 function Eggs:FindSellRemotes()
-    local found = {}
-    local seen = {}
+    local found, seen = {}, {}
+    local function push(instance)
+        if instance and not seen[instance] then
+            seen[instance] = true
+            found[#found + 1] = instance
+        end
+    end
+
+    for _, name in ipairs(self.Config.SellCandidates or {}) do
+        push(self.Network:Find(name))
+    end
+
     local folder = self.Network:GetFolder()
     if folder then
         for _, instance in ipairs(folder:GetDescendants()) do
             if instance:IsA("RemoteFunction") or instance:IsA("RemoteEvent") then
                 local lowered = string.lower(instance.Name)
-                if string.find(lowered, "sell", 1, true) or string.find(lowered, "sale", 1, true) then
-                    if not seen[instance:GetFullName()] then
-                        seen[instance:GetFullName()] = true
-                        found[#found + 1] = instance
-                    end
+                if string.find(lowered, "sell", 1, true) or string.find(lowered, "satchel", 1, true) or string.find(lowered, "sale", 1, true) then
+                    push(instance)
                 end
             end
-        end
-    end
-    for _, name in ipairs(self.Config.SellCandidates or {}) do
-        local instance = self.Network:Find(name)
-        if instance and not seen[instance:GetFullName()] then
-            seen[instance:GetFullName()] = true
-            found[#found + 1] = instance
         end
     end
     return found

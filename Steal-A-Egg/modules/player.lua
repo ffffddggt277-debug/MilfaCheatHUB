@@ -14,6 +14,7 @@ function Player.new(config)
     self.Player = self.Players.LocalPlayer
     self.Connections = {}
     self.Original = {}
+    self:WatchRespawn()
     return self
 end
 
@@ -29,6 +30,15 @@ function Player:ApplySpeed()
         humanoid.WalkSpeed = self.Config.Settings.WalkSpeed or 16
         humanoid.JumpPower = self.Config.Settings.JumpPower or 50
     end
+end
+
+-- Re-apply speed/jump after respawn or character switch.
+function Player:WatchRespawn()
+    if self.Connections.Respawn then return end
+    self.Connections.Respawn = self.Player.CharacterAdded:Connect(function()
+        task.wait(0.6)
+        pcall(function() self:ApplySpeed() end)
+    end)
 end
 
 function Player:ResetSpeed()

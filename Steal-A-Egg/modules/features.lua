@@ -101,6 +101,10 @@ function Features:RefreshStatuses()
     if self.SellStatus then self.SellStatus:Set("Продажа: " .. tostring(status.Sell or "—")) end
     if self.HatchStatus then self.HatchStatus:Set("Вылупление: " .. tostring(status.Hatch or "—")) end
     if self.CollectStatus then self.CollectStatus:Set("Доход: " .. tostring(status.Collect or "—")) end
+    if self.TreadmillStatus then self.TreadmillStatus:Set("Дорожка: " .. tostring(status.Treadmill or "—")) end
+    if self.UpgradeStatus then self.UpgradeStatus:Set("Апгрейды: " .. tostring(status.Upgrades or "—")) end
+    if self.PetsStatus then self.PetsStatus:Set("Питомцы: " .. tostring(status.Pets or "—")) end
+    if self.TrapsStatus then self.TrapsStatus:Set("Ловушки: " .. tostring(status.Traps or "—")) end
 end
 
 function Features:Build()
@@ -144,6 +148,7 @@ function Features:Build()
     self.UI:AddSection(eggsTab, "Список яиц")
     self.EggList = self.UI:CreateEggList(eggsTab, self.Rarity)
     self.UI:AddText(eggsTab, "Кнопки", "TP — телепорт к яйцу, СТЛ — украсть это яйцо (TP + Carry + Place).")
+    self.UI:AddText(eggsTab, "Важно", "Прямого ремоута кражи у игроков в игре нет — автокража работает с полевыми яйцами биомов и промптами. FirstAreaSlotKey подставляется автоматически.")
 
     -- ============================== АВТО ==============================
     self.UI:AddHeading(autoTab, "Автокража")
@@ -185,8 +190,37 @@ function Features:Build()
         settings.AutoCollect = value
         if value then self.Automation.Status.Collect = "включено" end
     end)
-    self.UI:AddToggle(autoTab, "Дорожка: вставать каждые 60с", settings.AutoTreadmill, function(value)
+    self.UI:AddToggle(autoTab, "Дорожка: вставать (AskWearStill)", settings.AutoTreadmill, function(value)
         settings.AutoTreadmill = value
+    end)
+    self.TreadmillStatus = self.UI:AddText(autoTab, "Дорожка", "выключено")
+    self.UI:AddToggle(autoTab, "Дорожка: сходить каждые 5с (AskDoff)", settings.AutoDoff, function(value)
+        settings.AutoDoff = value
+    end)
+
+    self.UI:AddSection(autoTab, "Автоулучшения")
+    self.UpgradeStatus = self.UI:AddText(autoTab, "Апгрейды", "выключено")
+    self.UI:AddToggle(autoTab, "Улучшать дорожку (AskTierRaise)", settings.AutoTreadmillUpgrade, function(value)
+        settings.AutoTreadmillUpgrade = value
+    end)
+    self.UI:AddToggle(autoTab, "Улучшать базу (AskBaseTierRaise)", settings.AutoBaseUpgrade, function(value)
+        settings.AutoBaseUpgrade = value
+    end)
+    self.UI:AddSlider(autoTab, "Пауза между апгрейдами", 30, 600, settings.UpgradeInterval, " c", function(value)
+        settings.UpgradeInterval = value
+    end)
+
+    self.UI:AddSection(autoTab, "Питомцы и защита")
+    self.PetsStatus = self.UI:AddText(autoTab, "Питомцы", "выключено")
+    self.UI:AddToggle(autoTab, "Надевать лучших питомцев (PenRoster)", settings.AutoPetsBest, function(value)
+        settings.AutoPetsBest = value
+    end)
+    self.UI:AddSlider(autoTab, "Сколько питомцев надевать", 1, 8, settings.PetSlots, "", function(value)
+        settings.PetSlots = value
+    end)
+    self.TrapsStatus = self.UI:AddText(autoTab, "Ловушки", "выключено")
+    self.UI:AddToggle(autoTab, "Отключать чужие ловушки (__DEBRIS)", settings.NeutralizeTraps, function(value)
+        settings.NeutralizeTraps = value
     end)
 
     self.UI:AddSection(autoTab, "Автопродажа с фильтром редкости")
@@ -320,7 +354,7 @@ function Features:Build()
     self.UI:AddText(
         systemTab,
         "Сборка " .. self.Config.Version,
-        "40+ функций: автокража, автопродажа с фильтром, ESP редкостей, скорость, noclip, автохатч, автосбор, сервер-хоп."
+        "50+ функций: автокража с SlotKey, автопродажа через SellPet, ESP редкостей, автохатч по инвентарю, апгрейды, питомцы, ловушки, скорость, noclip, сервер-хоп."
     )
 end
 

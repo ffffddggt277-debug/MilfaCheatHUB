@@ -1,10 +1,10 @@
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.3.0
+-- Shared branding, palette, paths and defaults. v0.3.1
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.3.0",
+    Version = "0.3.1",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -42,6 +42,9 @@ return {
         "RF/EggWorld/AskFieldEggDrop",
         "RF/EggWorld/AskFieldEggSnapshot",
         "RF/EggWorld/AskFinishHatch",
+        "RF/EggWorld/AskWearTool",
+        "RE/PetSatchel/SellPet",
+        "RE/ToolTrigger/Trigger",
         "RF/Treadmill/AskWearStill",
         "RF/Treadmill/AskDoff",
         "RF/Treadmill/AskTierRaise",
@@ -56,10 +59,12 @@ return {
         "RF/MonsterParasite/AskChestClaim",
     },
 
+    -- Sell remote confirmed by community scripts: RE/PetSatchel/SellPet
+    -- (egg: AskWearTool(uid) then SellPet({uid}); pet: SellPet(uid))
     SellCandidates = {
+        "RE/PetSatchel/SellPet",
+        "RF/PetSatchel/SellPet",
         "RF/EggWorld/AskSellEgg",
-        "RF/EggWorld/AskSellFieldEgg",
-        "RF/PenRoster/AskSellPet",
         "RF/Shop/AskSell",
         "RF/Economy/AskSell",
     },
@@ -94,13 +99,27 @@ return {
         AutoHatch = false,
         AutoCollect = false,
         AutoTreadmill = false,
+        TreadmillInterval = 60,
+        AutoDoff = false,
         AutoPlace = true,
+        AutoTreadmillUpgrade = false,
+        AutoBaseUpgrade = false,
+        UpgradeInterval = 90,
+
+        -- Best pets
+        AutoPetsBest = false,
+        PetSlots = 3,
+
+        -- Safety
+        NeutralizeTraps = false,
 
         -- Auto sell
         AutoSellEggs = false,
         AutoSellPets = false,
         KeepRarities = {"Legendary", "Mythic", "Godly", "Brainrot", "Monster", "Mecha", "Cosmic", "Secret", "Eternal", "Divine"},
         SellInterval = 10,
+        SellPerTick = 8,
+        SellPerDelay = 0.15,
 
         -- Server
         AutoServerHop = false,

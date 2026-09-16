@@ -37,6 +37,21 @@ function Scanner.new(config)
     return self
 end
 
+function Scanner:GetSave()
+    if not self.Save then
+        self.Save = safeRequire(findPath(self.RS, "Shared.Save"))
+    end
+    local save = self.Save
+    if type(save) == "table" then
+        if type(save.Get) == "function" then
+            local ok, value = pcall(save.Get)
+            if ok and type(value) == "table" then return value end
+        end
+        return save
+    end
+    return nil
+end
+
 function Scanner:GetCharacter()
     return self.Player.Character
 end

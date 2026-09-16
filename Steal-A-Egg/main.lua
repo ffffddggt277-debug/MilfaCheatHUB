@@ -1,9 +1,9 @@
 -- MilfaCheatHUB • Steal An Egg
--- Stable modular entry point v0.3.0.
+-- Stable modular entry point v0.3.1.
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.3.0"
+local VERSION = "0.3.1"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
