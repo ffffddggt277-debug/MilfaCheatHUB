@@ -1,9 +1,9 @@
 -- MilfaCheatHUB • Steal An Egg
--- Stable modular entry point v0.2.0.
+-- Stable modular entry point v0.3.0.
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.2.0"
+local VERSION = "0.3.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -84,25 +84,40 @@ local success, failure = xpcall(function()
     local Scanner = loadModule("modules/scanner.lua")
     local scanner = Scanner.new(Config)
 
-    loading(0.40, "Проверяем Networking...")
+    loading(0.35, "Проверяем Networking...")
     local Network = loadModule("modules/network.lua")
     local network = Network.new(Config)
 
-    loading(0.55, "Определяем точки...")
+    loading(0.42, "Определяем редкости...")
+    local Rarity = loadModule("modules/rarity.lua")
+
+    loading(0.50, "Определяем точки...")
     local Positions = loadModule("modules/positions.lua")
     local positions = Positions.new(Config, scanner)
 
-    loading(0.68, "Подготавливаем ESP...")
+    loading(0.58, "Подготавливаем ESP...")
     local ESP = loadModule("modules/esp.lua")
-    state.ESP = ESP.new(Config)
+    state.ESP = ESP.new(Config, Rarity)
 
-    loading(0.80, "Создаём компактный GUI...")
+    loading(0.66, "Запускаем движок яиц...")
+    local Eggs = loadModule("modules/eggs.lua")
+    local eggs = Eggs.new(Config, scanner, network, Rarity)
+
+    loading(0.74, "Создаём компактный GUI...")
     state.App = UI.new(Config)
     state.App:SetCloseCallback(env.MilfaCheatHUBCleanup)
 
-    loading(0.92, "Подключаем функции...")
+    loading(0.82, "Подключаем автоматизацию...")
+    local Automation = loadModule("modules/automation.lua")
+    local automation = Automation.new(Config, eggs, network, positions, scanner, Rarity)
+
+    loading(0.88, "Настраиваем персонажа...")
+    local Player = loadModule("modules/player.lua")
+    local player = Player.new(Config)
+
+    loading(0.94, "Подключаем функции...")
     local Features = loadModule("modules/features.lua")
-    state.Features = Features.new(Config, state.App, scanner, network, positions, state.ESP, alive)
+    state.Features = Features.new(Config, state.App, scanner, network, positions, state.ESP, eggs, automation, player, Rarity, alive)
     state.Features:Build()
     state.Features:Start()
 

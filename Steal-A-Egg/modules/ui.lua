@@ -614,6 +614,393 @@ function UI.new(config)
         return button
     end
 
+    function self:AddSection(tab, text)
+        local holder = Instance.new("Frame")
+        holder.Size = UDim2.new(1, -2, 0, 20)
+        holder.BackgroundTransparency = 1
+        holder.Parent = tab.Page
+
+        local line = Instance.new("Frame")
+        line.Size = UDim2.new(1, 0, 0, 1)
+        line.Position = UDim2.fromOffset(0, 10)
+        line.BackgroundColor3 = colors.Border
+        line.BorderSizePixel = 0
+        line.Parent = holder
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.fromOffset(160, 20)
+        label.BackgroundTransparency = 1
+        label.Text = string.upper(text or "")
+        label.TextColor3 = tab.Accent
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Font = Enum.Font.Code
+        label.TextSize = 9
+        label.Parent = holder
+        return label
+    end
+
+    function self:AddSlider(tab, text, min, max, default, suffix, callback)
+        local value = math.clamp(tonumber(default) or min, min, max)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -2, 0, 34)
+        row.BackgroundColor3 = colors.Panel
+        row.BackgroundTransparency = 0.08
+        row.BorderSizePixel = 0
+        row.Parent = tab.Page
+        corner(row, 8)
+        stroke(row, colors.Border, 1, 0.38)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -136, 1, 0)
+        label.Position = UDim2.fromOffset(11, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = colors.Text
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+        label.Font = Enum.Font.Code
+        label.TextSize = 10
+        label.Parent = row
+
+        local valueLabel = Instance.new("TextLabel")
+        valueLabel.Size = UDim2.fromOffset(44, 34)
+        valueLabel.Position = UDim2.new(1, -48, 0, 0)
+        valueLabel.BackgroundTransparency = 1
+        valueLabel.TextColor3 = tab.Accent
+        valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valueLabel.Font = Enum.Font.Code
+        valueLabel.TextSize = 10
+        valueLabel.Parent = row
+
+        local track = Instance.new("Frame")
+        track.Size = UDim2.fromOffset(76, 6)
+        track.Position = UDim2.new(1, -130, 0.5, -3)
+        track.BackgroundColor3 = colors.Panel2
+        track.BorderSizePixel = 0
+        track.Parent = row
+        corner(track, 4)
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.fromScale(0, 1)
+        fill.BackgroundColor3 = tab.Accent
+        fill.BorderSizePixel = 0
+        fill.Parent = track
+        corner(fill, 4)
+
+        local dragging = false
+        local function render()
+            local scale = (max > min) and ((value - min) / (max - min)) or 0
+            fill.Size = UDim2.fromScale(scale, 1)
+            valueLabel.Text = tostring(math.floor(value * 10 + 0.5) / 10) .. (suffix or "")
+        end
+        local function fromX(x, fire)
+            local scale = math.clamp((x - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
+            value = min + (max - min) * scale
+            value = math.floor(value * 10 + 0.5) / 10
+            render()
+            if fire and callback then callback(value) end
+        end
+
+        track.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                fromX(input.Position.X, true)
+            end
+        end)
+        fill.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                fromX(input.Position.X, true)
+            end
+        end)
+        self.Connections[#self.Connections + 1] = UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                fromX(input.Position.X, true)
+            end
+        end)
+        self.Connections[#self.Connections + 1] = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                if dragging then dragging = false end
+            end
+        end)
+        render()
+        return {Set = function(_, v) value = math.clamp(tonumber(v) or min, min, max); render() end, Get = function() return value end}
+    end
+
+    function self:AddChips(tab, text, options, defaults, onChange)
+        local heading = Instance.new("TextLabel")
+        heading.Size = UDim2.new(1, -2, 0, 16)
+        heading.BackgroundTransparency = 1
+        heading.Text = text or ""
+        heading.TextColor3 = colors.Muted
+        heading.TextXAlignment = Enum.TextXAlignment.Left
+        heading.Font = Enum.Font.Code
+        heading.TextSize = 9
+        heading.Parent = tab.Page
+
+        local selected = {}
+        for _, id in ipairs(defaults or {}) do selected[tostring(id)] = true end
+
+        local perRow = 4
+        local chipW, chipH, gapX, gapY = 68, 22, 4, 4
+        local rows = math.max(1, math.ceil(#options / perRow))
+        local grid = Instance.new("Frame")
+        grid.Size = UDim2.new(1, -2, 0, rows * (chipH + gapY))
+        grid.BackgroundTransparency = 1
+        grid.Parent = tab.Page
+
+        local function currentList()
+            local out = {}
+            for _, id in ipairs(options) do
+                if selected[tostring(id)] then out[#out + 1] = id end
+            end
+            return out
+        end
+
+        for index, id in ipairs(options) do
+            local col = (index - 1) % perRow
+            local row = math.floor((index - 1) / perRow)
+            local chip = Instance.new("TextButton")
+            chip.Size = UDim2.fromOffset(chipW, chipH)
+            chip.Position = UDim2.fromOffset(col * (chipW + gapX), row * (chipH + gapY))
+            chip.BackgroundColor3 = colors.Panel2
+            chip.BorderSizePixel = 0
+            chip.Text = tostring(id)
+            chip.TextColor3 = colors.Muted
+            chip.Font = Enum.Font.Code
+            chip.TextSize = 8
+            chip.Parent = grid
+            corner(chip, 6)
+
+            local function render()
+                local on = selected[tostring(id)] == true
+                chip.BackgroundColor3 = on and tab.Accent or colors.Panel2
+                chip.BackgroundTransparency = on and 0.3 or 0.5
+                chip.TextColor3 = on and colors.Background or colors.Muted
+            end
+            chip.MouseButton1Click:Connect(function()
+                if selected[tostring(id)] then selected[tostring(id)] = nil else selected[tostring(id)] = true end
+                render()
+                if onChange then onChange(currentList()) end
+            end)
+            render()
+        end
+        return {Get = currentList}
+    end
+
+    function self:AddDropdown(tab, text, options, default, onSelect)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, -2, 0, 34)
+        container.BackgroundTransparency = 1
+        container.Parent = tab.Page
+
+        local row = Instance.new("TextButton")
+        row.Size = UDim2.new(1, 0, 0, 34)
+        row.BackgroundColor3 = colors.Panel
+        row.BackgroundTransparency = 0.08
+        row.BorderSizePixel = 0
+        row.Text = ""
+        row.Parent = container
+        corner(row, 8)
+        stroke(row, colors.Border, 1, 0.38)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -130, 1, 0)
+        label.Position = UDim2.fromOffset(11, 0)
+        label.BackgroundTransparency = 1
+        label.Text = text
+        label.TextColor3 = colors.Text
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+        label.Font = Enum.Font.Code
+        label.TextSize = 10
+        label.Parent = row
+
+        local valueLabel = Instance.new("TextLabel")
+        valueLabel.Size = UDim2.fromOffset(90, 34)
+        valueLabel.Position = UDim2.new(1, -106, 0, 0)
+        valueLabel.BackgroundTransparency = 1
+        valueLabel.Text = tostring(default or options[1] or "")
+        valueLabel.TextColor3 = tab.Accent
+        valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valueLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        valueLabel.Font = Enum.Font.Code
+        valueLabel.TextSize = 9
+        valueLabel.Parent = row
+
+        local arrow = Instance.new("TextLabel")
+        arrow.Size = UDim2.fromOffset(16, 34)
+        arrow.Position = UDim2.new(1, -20, 0, 0)
+        arrow.BackgroundTransparency = 1
+        arrow.Text = "▾"
+        arrow.TextColor3 = colors.Muted
+        arrow.Font = Enum.Font.Code
+        arrow.TextSize = 10
+        arrow.Parent = row
+
+        local listFrame = Instance.new("Frame")
+        listFrame.Position = UDim2.fromOffset(0, 36)
+        listFrame.Size = UDim2.new(1, 0, 0, #options * 26 + 4)
+        listFrame.BackgroundColor3 = colors.Panel2
+        listFrame.BorderSizePixel = 0
+        listFrame.Visible = false
+        listFrame.ZIndex = 5
+        listFrame.Parent = container
+        corner(listFrame, 8)
+        stroke(listFrame, colors.Accent, 1, 0.4)
+
+        for index, option in ipairs(options) do
+            local optionButton = Instance.new("TextButton")
+            optionButton.Size = UDim2.new(1, -8, 0, 24)
+            optionButton.Position = UDim2.fromOffset(4, (index - 1) * 26 + 2)
+            optionButton.BackgroundColor3 = colors.Panel2
+            optionButton.BorderSizePixel = 0
+            optionButton.Text = tostring(option)
+            optionButton.TextColor3 = colors.Text
+            optionButton.Font = Enum.Font.Code
+            optionButton.TextSize = 9
+            optionButton.ZIndex = 6
+            optionButton.Parent = listFrame
+            corner(optionButton, 6)
+            optionButton.MouseButton1Click:Connect(function()
+                valueLabel.Text = tostring(option)
+                listFrame.Visible = false
+                arrow.Text = "▾"
+                if onSelect then onSelect(option) end
+            end)
+        end
+
+        row.MouseButton1Click:Connect(function()
+            listFrame.Visible = not listFrame.Visible
+            arrow.Text = listFrame.Visible and "▴" or "▾"
+        end)
+        return {Set = function(_, option) valueLabel.Text = tostring(option) end}
+    end
+
+    function self:CreateEggList(tab, rarity)
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, -2, 0, 150)
+        container.BackgroundTransparency = 1
+        container.Parent = tab.Page
+        local layout = Instance.new("UIListLayout")
+        layout.Padding = UDim.new(0, 4)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Parent = container
+        local handles = {}
+
+        local controller = {}
+
+        function controller:Clear()
+            for key, handle in pairs(handles) do
+                pcall(function() handle.Frame:Destroy() end)
+                handles[key] = nil
+            end
+        end
+
+        function controller:Rebuild(records, callbacks)
+            local seen = {}
+            for index, record in ipairs(records) do
+                local key = tostring(record.Uid)
+                seen[key] = true
+                local handle = handles[key]
+                if not handle then
+                    local card = Instance.new("Frame")
+                    card.Size = UDim2.new(1, -2, 0, 36)
+                    card.BackgroundColor3 = colors.Panel
+                    card.BackgroundTransparency = 0.08
+                    card.BorderSizePixel = 0
+                    card.Parent = container
+                    corner(card, 8)
+                    stroke(card, colors.Border, 1, 0.38)
+
+                    local marker = Instance.new("Frame")
+                    marker.Size = UDim2.fromOffset(2, 24)
+                    marker.Position = UDim2.fromOffset(6, 6)
+                    marker.BackgroundColor3 = rarity.Color(record.Rarity)
+                    marker.BorderSizePixel = 0
+                    marker.Parent = card
+                    corner(marker, 2)
+
+                    local nameLabel = Instance.new("TextLabel")
+                    nameLabel.Size = UDim2.new(1, -150, 0, 16)
+                    nameLabel.Position = UDim2.fromOffset(14, 3)
+                    nameLabel.BackgroundTransparency = 1
+                    nameLabel.Text = tostring(record.Name or "Egg")
+                    nameLabel.TextColor3 = colors.Text
+                    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                    nameLabel.Font = Enum.Font.Code
+                    nameLabel.TextSize = 10
+                    nameLabel.Parent = card
+
+                    local subLabel = Instance.new("TextLabel")
+                    subLabel.Size = UDim2.new(1, -150, 0, 13)
+                    subLabel.Position = UDim2.fromOffset(14, 19)
+                    subLabel.BackgroundTransparency = 1
+                    subLabel.Text = ""
+                    subLabel.TextColor3 = rarity.Color(record.Rarity)
+                    subLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    subLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                    subLabel.Font = Enum.Font.Code
+                    subLabel.TextSize = 8
+                    subLabel.Parent = card
+
+                    local stealButton = Instance.new("TextButton")
+                    stealButton.Size = UDim2.fromOffset(46, 24)
+                    stealButton.Position = UDim2.new(1, -104, 0.5, -12)
+                    stealButton.BackgroundColor3 = colors.Panel2
+                    stealButton.BorderSizePixel = 0
+                    stealButton.Text = "СТЛ"
+                    stealButton.TextColor3 = colors.Combat
+                    stealButton.Font = Enum.Font.Code
+                    stealButton.TextSize = 9
+                    stealButton.Parent = card
+                    corner(stealButton, 6)
+                    stroke(stealButton, colors.Combat, 1, 0.45)
+
+                    local tpButton = Instance.new("TextButton")
+                    tpButton.Size = UDim2.fromOffset(40, 24)
+                    tpButton.Position = UDim2.new(1, -58, 0.5, -12)
+                    tpButton.BackgroundColor3 = colors.Panel2
+                    tpButton.BorderSizePixel = 0
+                    tpButton.Text = "TP"
+                    tpButton.TextColor3 = colors.Movement
+                    tpButton.Font = Enum.Font.Code
+                    tpButton.TextSize = 9
+                    tpButton.Parent = card
+                    corner(tpButton, 6)
+                    stroke(tpButton, colors.Movement, 1, 0.45)
+
+                    handle = {Frame = card, Name = nameLabel, Sub = subLabel, Record = record}
+                    handles[key] = handle
+
+                    tpButton.MouseButton1Click:Connect(function()
+                        if callbacks and callbacks.OnTeleport then task.spawn(callbacks.OnTeleport, handle.Record) end
+                    end)
+                    stealButton.MouseButton1Click:Connect(function()
+                        if callbacks and callbacks.OnSteal then task.spawn(callbacks.OnSteal, handle.Record) end
+                    end)
+                end
+
+                handle.Record = record
+                handle.Frame.LayoutOrder = index
+                handle.Name.Text = tostring(record.Name or "Egg")
+                local distanceText = (record.Distance and record.Distance ~= math.huge) and (tostring(record.Distance) .. " st") or "?"
+                handle.Sub.Text = string.format("[%s] • %s", tostring(record.Rarity), distanceText)
+                handle.Sub.TextColor3 = rarity.Color(record.Rarity)
+            end
+
+            for key, handle in pairs(handles) do
+                if not seen[key] then
+                    pcall(function() handle.Frame:Destroy() end)
+                    handles[key] = nil
+                end
+            end
+        end
+
+        return controller
+    end
+
     return self
 end
 

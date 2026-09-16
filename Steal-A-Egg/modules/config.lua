@@ -1,10 +1,10 @@
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults.
+-- Shared branding, palette, paths and defaults. v0.3.0
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.2.0",
+    Version = "0.3.0",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -12,7 +12,7 @@ return {
 
     Window = {
         Width = 570,
-        Height = 360,
+        Height = 380,
         SidebarWidth = 148,
     },
 
@@ -50,12 +50,71 @@ return {
         "RF/PenRoster/AskDoff",
         "RF/Haul/FetchWearBestStatus",
         "RF/AwayEarnings/AskCollect",
+        "RF/MonsterParasite/AskFeed",
+        "RF/MonsterParasite/AskChestTake",
+        "RF/MonsterParasite/AskChestRevealComplete",
+        "RF/MonsterParasite/AskChestClaim",
+    },
+
+    SellCandidates = {
+        "RF/EggWorld/AskSellEgg",
+        "RF/EggWorld/AskSellFieldEgg",
+        "RF/PenRoster/AskSellPet",
+        "RF/Shop/AskSell",
+        "RF/Economy/AskSell",
     },
 
     Settings = {
+        -- ESP
         EggESP = false,
         ShowDistance = true,
+        ShowRarity = true,
+        EspMaxDistance = 1500,
+        EspFilterOnly = false,
         RefreshSeconds = 3,
+
+        -- Rarity filter (shared by list / steal / ESP-filter)
+        RarityFilter = {"Legendary", "Mythic", "Giant", "Godly", "Brainrot", "Monster", "Mecha", "Cosmic", "Secret", "Eternal", "Divine"},
+
+        -- Egg list
+        EggListAutoRefresh = true,
+        MaxListDistance = 0,
+        SortMode = "rarity",
+
+        -- Auto steal
+        AutoSteal = false,
+        StealPriority = "rarity",
+        StealRadius = 300,
+        StealDelay = 2,
+        StealTeleport = true,
+        AutoReturn = true,
+        AutoDrop = false,
+
+        -- Automation
+        AutoHatch = false,
+        AutoCollect = false,
+        AutoTreadmill = false,
+        AutoPlace = true,
+
+        -- Auto sell
+        AutoSellEggs = false,
+        AutoSellPets = false,
+        KeepRarities = {"Legendary", "Mythic", "Godly", "Brainrot", "Monster", "Mecha", "Cosmic", "Secret", "Eternal", "Divine"},
+        SellInterval = 10,
+
+        -- Server
+        AutoServerHop = false,
+        HopEmptyRuns = 12,
+
+        -- Player
+        WalkSpeed = 16,
+        JumpPower = 50,
+        InfiniteJump = false,
+        Noclip = false,
+        ClickTP = false,
+        AntiAFK = false,
+
+        -- Misc
         FpsMode = false,
         ToggleKey = Enum.KeyCode.RightControl,
     },
