@@ -1,97 +1,124 @@
 -- MilfaCheatHUB • Steal An Egg
--- Main entry point for the modular build.
+-- Stable modular entry point v0.2.0.
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
+local VERSION = "0.2.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players = game:GetService("Players")
 repeat task.wait() until Players.LocalPlayer
 
-local environment = (getgenv and getgenv()) or _G
-if environment.MilfaCheatHUBCleanup then
-    pcall(environment.MilfaCheatHUBCleanup)
-end
+local env = (getgenv and getgenv()) or _G
+if env.MilfaCheatHUBCleanup then pcall(env.MilfaCheatHUBCleanup) end
 
-environment.MilfaCheatHUBSession = (environment.MilfaCheatHUBSession or 0) + 1
-local session = environment.MilfaCheatHUBSession
+env.MilfaCheatHUBSession = (env.MilfaCheatHUBSession or 0) + 1
+local session = env.MilfaCheatHUBSession
+local state = {
+    Loader = nil,
+    App = nil,
+    Features = nil,
+    ESP = nil,
+    Cleaned = false,
+}
+
 local function alive()
-    return environment.MilfaCheatHUBSession == session
+    return not state.Cleaned and env.MilfaCheatHUBSession == session
 end
 
-local function loadModule(relativePath)
-    local url = BASE_URL .. relativePath .. "?v=0.1.0"
-    local ok, source = pcall(game.HttpGet, game, url)
-    assert(ok and type(source) == "string", "Не удалось загрузить " .. relativePath)
-
-    local chunk, compileError = loadstring(source, "@MilfaCheatHUB/" .. relativePath)
-    assert(chunk, "Ошибка модуля " .. relativePath .. ": " .. tostring(compileError))
-
-    local success, module = pcall(chunk)
-    assert(success, "Ошибка запуска " .. relativePath .. ": " .. tostring(module))
-    return module
-end
-
-local Config = loadModule("modules/config.lua")
-local UI = loadModule("modules/ui.lua")
-local loader = UI.ShowLoader(Config)
-
-local function loading(progress, text)
-    loader:Set(progress, text)
-    task.wait(0.08)
-end
-
-loading(0.12, "Проверяем игру...")
-if game.PlaceId ~= EXPECTED_PLACE_ID then
-    loading(0.18, "Внимание: открыта другая игра")
-    task.wait(0.8)
-end
-
-loading(0.28, "Загружаем сканер...")
-local Scanner = loadModule("modules/scanner.lua")
-local scanner = Scanner.new(Config)
-
-loading(0.43, "Проверяем Networking...")
-local Network = loadModule("modules/network.lua")
-local network = Network.new(Config)
-
-loading(0.57, "Определяем динамические точки...")
-local Positions = loadModule("modules/positions.lua")
-local positions = Positions.new(Config, scanner)
-
-loading(0.70, "Подготавливаем неоновый ESP...")
-local ESP = loadModule("modules/esp.lua")
-local esp = ESP.new(Config)
-
-loading(0.82, "Создаём MilfaCheatHUB...")
-local app = UI.new(Config)
-
-loading(0.93, "Подключаем функции...")
-local Features = loadModule("modules/features.lua")
-local features = Features.new(Config, app, scanner, network, positions, esp, alive)
-features:Build()
-features:Start()
-
-loading(1, "MilfaCheatHUB готов")
-task.wait(0.55)
-loader:Destroy()
-
-local cleaned = false
 local function cleanup()
-    if cleaned then return end
-    cleaned = true
-    if features then pcall(function() features:Destroy() end) end
-    if esp then pcall(function() esp:Destroy() end) end
-    if app then pcall(function() app:Destroy() end) end
+    if state.Cleaned then return end
+    state.Cleaned = true
+
+    if state.Features then pcall(function() state.Features:Destroy() end) end
+    if state.ESP then pcall(function() state.ESP:Destroy() end) end
+    if state.App then pcall(function() state.App:Destroy() end) end
+    if state.Loader then pcall(function() state.Loader:Destroy() end) end
+
+    state.Features = nil
+    state.ESP = nil
+    state.App = nil
+    state.Loader = nil
 end
 
-environment.MilfaCheatHUBCleanup = function()
-    if environment.MilfaCheatHUBSession == session then
-        environment.MilfaCheatHUBSession = session + 1
+env.MilfaCheatHUBCleanup = function()
+    if env.MilfaCheatHUBSession == session then
+        env.MilfaCheatHUBSession = session + 1
     end
     cleanup()
 end
 
-print("[MilfaCheatHUB] Steal An Egg v" .. Config.Version .. " loaded")
-return environment.MilfaCheatHUBCleanup
+local function loadModule(relativePath)
+    local url = BASE_URL .. relativePath .. "?v=" .. VERSION
+    local requestOk, source = pcall(game.HttpGet, game, url)
+    if not requestOk or type(source) ~= "string" or #source < 10 then
+        error("Не удалось загрузить модуль: " .. relativePath, 0)
+    end
+
+    local chunk, compileError = loadstring(source, "@MilfaCheatHUB/" .. relativePath)
+    if not chunk then
+        error("Ошибка кода " .. relativePath .. ": " .. tostring(compileError), 0)
+    end
+
+    local runOk, module = pcall(chunk)
+    if not runOk then
+        error("Ошибка запуска " .. relativePath .. ": " .. tostring(module), 0)
+    end
+    return module
+end
+
+local success, failure = xpcall(function()
+    local Config = loadModule("modules/config.lua")
+    local UI = loadModule("modules/ui.lua")
+    state.Loader = UI.ShowLoader(Config)
+
+    local function loading(progress, text)
+        if state.Loader then state.Loader:Set(progress, text) end
+        task.wait()
+    end
+
+    loading(0.12, game.PlaceId == EXPECTED_PLACE_ID and "Игра определена" or "Открыта другая игра")
+
+    loading(0.25, "Загружаем сканер...")
+    local Scanner = loadModule("modules/scanner.lua")
+    local scanner = Scanner.new(Config)
+
+    loading(0.40, "Проверяем Networking...")
+    local Network = loadModule("modules/network.lua")
+    local network = Network.new(Config)
+
+    loading(0.55, "Определяем точки...")
+    local Positions = loadModule("modules/positions.lua")
+    local positions = Positions.new(Config, scanner)
+
+    loading(0.68, "Подготавливаем ESP...")
+    local ESP = loadModule("modules/esp.lua")
+    state.ESP = ESP.new(Config)
+
+    loading(0.80, "Создаём компактный GUI...")
+    state.App = UI.new(Config)
+    state.App:SetCloseCallback(env.MilfaCheatHUBCleanup)
+
+    loading(0.92, "Подключаем функции...")
+    local Features = loadModule("modules/features.lua")
+    state.Features = Features.new(Config, state.App, scanner, network, positions, state.ESP, alive)
+    state.Features:Build()
+    state.Features:Start()
+
+    loading(1, "MilfaCheatHUB готов")
+    task.wait(0.25)
+    if state.Loader then
+        state.Loader:Destroy()
+        state.Loader = nil
+    end
+
+    print("[MilfaCheatHUB] Steal An Egg v" .. Config.Version .. " loaded")
+end, debug.traceback)
+
+if not success then
+    warn("[MilfaCheatHUB] " .. tostring(failure))
+    cleanup()
+end
+
+return env.MilfaCheatHUBCleanup
