@@ -1,10 +1,10 @@
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.5.0 (anticheat bypass)
+-- Shared branding, palette, paths and defaults. v0.6.0 (GHOST minimal footprint)
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.5.0",
+    Version = "0.6.0",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -125,17 +125,22 @@ return {
         AutoServerHop = false,
         HopEmptyRuns = 12,
 
-        -- Stealth (anti BAC-75110)
+        -- Stealth (GHOST doctrine: minimal footprint, zero hooks on load)
         SafeTeleport = true,       -- glide вместо мгновенных CFrame-прыжков
         GlideSpeed = 48,           -- скорость glide, ст/с (держи < 70)
         HumanizeDelays = true,     -- случайный джиттер всех задержек
         StealthSpeed = false,      -- скорость через CFrame, WalkSpeed не трогаем
         StealthSpeedValue = 32,    -- ст/с для стелс-скорости (держи < 60)
         MaxHatchPerTick = 4,       -- лимит AskHatch за такт (было 8)
-        BlockKick = true,          -- блокировать клиентский LocalPlayer:Kick
-        FreezeACStates = true,     -- заморозка состояний античита (getgc, метод Phemonaz)
-        BlindSamplers = true,      -- ослепить сэмплер WalkSpeed (ContentCatalog.Runtime)
-        MaskHttpProbes = true,     -- HttpGet/HttpPost пробы игры отвечаем как vanilla-клиент
+        GuiMount = "PlayerGui",    -- PlayerGui (проверено рабочими хабами) | Hidden | Auto
+        BacAutoBypass = false,     -- НЕ включать агрессивный обход BAC при загрузке
+        FastPrompt = false,        -- HoldDuration=0 у ProximityPrompt «CarryAreaEgg»
+        RigSyncCut = false,        -- отключить клиентские обработчики RE/RigSync/Refresh
+        -- Всё ниже — устаревшие агрессивные счётчики (риск детекта, по умолчанию ВЫКЛ):
+        BlockKick = false,         -- хук __namecall: палят ханипот-проверки (BAC-4513)
+        FreezeACStates = false,    -- getgc-скан + заморозка таблиц (проверяется целостность)
+        BlindSamplers = false,     -- hookfunction по маске источника (можно зацепить чужое)
+        MaskHttpProbes = false,    -- маскировка Http-проб — подозреваемый триггер BAC-2516
 
         -- Player
         WalkSpeed = 16,

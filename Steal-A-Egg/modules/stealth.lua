@@ -1,10 +1,17 @@
--- MilfaCheatHUB • stealth core v0.5.0
--- Anti-detection layer for BAC-type client anticheats:
---   1) hidden mount (gethui / CoreGui / disguised PlayerGui) with randomized names
---   2) smooth CFrame glide instead of instant teleports (server position checks)
---   3) humanized delays (jitter) for every automation remote call
---   4) CFrame walk speed that never touches Humanoid.WalkSpeed
---   5) panic switch that wipes every trace instantly
+-- MilfaCheatHUB • stealth core v0.6.0 (GHOST doctrine)
+-- v0.6.0 lesson (proven by working open-source hubs, e.g. boblo "opensource_egg"):
+--   this game's anticheat does NOT scan PlayerGui for foreign ScreenGuis and does
+--   NOT scan workspace folders. What it DOES flag is tampering: hooked __namecall,
+--   hooked __newindex, getgc heap scans, frozen tables, masked Http probes.
+--   So the stealth layer now means:
+--   1) plain PlayerGui mount with a clean name (boblo-proven), hidden mounts optional
+--   2) ESP container in workspace (boblo-proven)
+--   3) smooth CFrame glide instead of instant teleports (server position checks)
+--   4) humanized delays (jitter) for every automation remote call
+--   5) CFrame walk speed that never touches Humanoid.WalkSpeed
+--   6) panic switch that wipes every trace instantly
+--   NO hooks are installed here. Aggressive BAC counters live in anticheat.lua and
+--   are strictly opt-in (Settings.BacAutoBypass).
 
 local Stealth = {}
 local RunService = game:GetService("RunService")
@@ -20,6 +27,8 @@ Stealth.Aborted = false
 Stealth.GlideSpeed = 48
 Stealth.Gliding = false
 Stealth.Container = nil
+Stealth.GuiMount = "PlayerGui" -- "PlayerGui" (boblo-proven) | "Hidden" (gethui/CoreGui) | "Auto"
+Stealth.PublicName = "MilfaHubUI" -- clean name for the PlayerGui mount
 
 function Stealth.RandomName(length)
     length = length or 14
@@ -48,21 +57,42 @@ end
 -- Client kick guard moved to anticheat.lua (v0.5.0): single __namecall
 -- hook covers Kick + HttpGet probe masking. Toggle: Stealth.BlockKick.
 ---------------------------------------------------------------------
-Stealth.BlockKick = true
+Stealth.BlockKick = false -- v0.6.0 GHOST: kick-guard ставится только в агрессивном режиме
 
-local function buildTargets()
+local function getPlayerGui()
+    local player = Players.LocalPlayer
+    return player and player:FindFirstChildOfClass("PlayerGui")
+end
+
+local function hiddenTargets()
     local targets = {}
     if gethui then
         local ok, value = pcall(gethui)
         if ok and value then targets[#targets + 1] = {value, "gethui"} end
     end
     targets[#targets + 1] = {CoreGui, "CoreGui"}
+    return targets
+end
 
-    -- Disguised fallback: inside PlayerGui, but named like one of the game's own
-    -- ScreenGuis so simple whitelist scanners pass it by.
-    local player = Players.LocalPlayer
-    local pgui = player and player:FindFirstChildOfClass("PlayerGui")
+-- Mount order follows Stealth.GuiMount. PlayerGui with a clean name is the
+-- default because the working open-source hubs mount there and never get kicked.
+local function buildTargets()
+    local targets = {}
+    local mode = Stealth.GuiMount or "PlayerGui"
+
+    local pgui = getPlayerGui()
     if pgui then targets[#targets + 1] = {pgui, "PlayerGui"} end
+
+    if mode ~= "PlayerGui" then
+        for _, target in ipairs(hiddenTargets()) do
+            targets[#targets + 1] = target
+        end
+    end
+
+    -- Absolute fallback in case Hidden mode lost access to both hidden roots.
+    if mode == "Hidden" and pgui and #targets == 0 then
+        targets[#targets + 1] = {pgui, "PlayerGui"}
+    end
     return targets
 end
 
@@ -79,37 +109,41 @@ local function mountInstance(instance)
     return nil
 end
 
--- Hidden container for ESP objects (Highlights/BillboardGuis with Adornee render
--- fine from CoreGui but are invisible to game scripts scanning workspace/PlayerGui).
+-- Hidden container for ESP objects. Workspace-first (boblo-proven: Highlights and
+-- BillboardGuis render fine from a workspace folder and game scripts ignore it).
 function Stealth.GetContainer()
     if Stealth.Container and Stealth.Container.Parent then
         return Stealth.Container
     end
+
+    local workspace = game:GetService("Workspace")
     local folder = Instance.new("Folder")
+    folder.Name = "MilfaESP"
+    local ok = pcall(function() folder.Parent = workspace end)
+    if ok and folder.Parent == workspace then
+        Stealth.Container = folder
+        Stealth.ContainerKind = "Workspace"
+        return folder
+    end
+
+    folder = Instance.new("Folder")
     folder.Name = Stealth.RandomName(16)
     if mountInstance(folder) then
         Stealth.Container = folder
+        Stealth.ContainerKind = Stealth.MountKind
         return folder
     end
     return nil
 end
 
--- ScreenGui mount with randomized (or disguised) name.
-function Stealth.MountScreenGui(gui, disguiseInPlayerGui)
+-- ScreenGui mount. In PlayerGui we keep a clean readable name (random gibberish
+-- stands out to whitelist scanners; working hubs ship their brand name there).
+-- In hidden mounts (gethui/CoreGui) the random name stays.
+function Stealth.MountScreenGui(gui)
     gui.Name = Stealth.RandomName(18)
-    local player = Players.LocalPlayer
-    local pgui = player and player:FindFirstChildOfClass("PlayerGui")
-    if disguiseInPlayerGui ~= false and pgui then
-        for _, child in ipairs(pgui:GetChildren()) do
-            if child:IsA("ScreenGui") and child.Name ~= gui.Name then
-                Stealth.DisguiseName = child.Name
-                break
-            end
-        end
-    end
     local kind = mountInstance(gui)
-    if kind == "PlayerGui" and Stealth.DisguiseName then
-        pcall(function() gui.Name = Stealth.DisguiseName end)
+    if kind == "PlayerGui" then
+        pcall(function() gui.Name = Stealth.PublicName end)
     end
     return kind
 end

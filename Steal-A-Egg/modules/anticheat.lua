@@ -1,14 +1,19 @@
--- MilfaCheatHUB • anticheat bypass core v0.5.0
--- Counter-measures against the game's client anticheat (kick codes BAC-4513 / BAC-75110).
--- Techniques borrowed from public working scripts (Phemonaz "Anti Cheat Bypass",
--- rscripts "Steal an Egg WalkSpeed + anticheat bypass", Exunys "Anti-Kick"):
---   1) Freeze anticheat state tables found via getgc -> blocks incident writes (kick reports)
---   2) Blind the movement sampler: the AC module hides behind the source name
---      "ContentCatalog.Runtime"; its sampler (3 params, 5 upvalues) returns
---      {WalkSpeed, Position, Timestamp} — we falsify WalkSpeed in the sample
---   3) Mask executor HttpGet/HttpPost probes coming from game scripts (look vanilla)
---   4) Block client-side LocalPlayer:Kick as the last line of defense
---   5) Optional WalkSpeed write-lock via __newindex (blocks AC speed resets)
+-- MilfaCheatHUB • anticheat bypass core v0.6.0 (OPT-IN ONLY)
+-- History lesson from the field:
+--   v0.4.1 kick-guard (namecall hook)      -> kicked, CODE BAC-4513
+--   v0.5.0 freeze + samplers + Http masking -> kicked, CODE BAC-2516
+--   meanwhile open-source hubs with ZERO hooks run fine for hours.
+-- Conclusion: this game's anticheat runs integrity/honeypot checks and flags
+-- tampering. Every counter here can therefore CAUSE a kick instead of stopping one.
+-- In v0.6.0 nothing is installed automatically. AC.Init only acts when the user
+-- explicitly enables the aggressive mode (Settings.BacAutoBypass / SYS tab).
+-- Techniques kept for opt-in use (from public working scripts):
+--   1) Freeze anticheat state tables found via getgc (Phemonaz method)
+--   2) Blind the movement sampler hidden behind "ContentCatalog.Runtime"
+--   3) Mask executor HttpGet/HttpPost probes coming from game scripts (RISKY:
+--      suspected BAC-2516 trigger — the AC probe expects to fail, we answer wrong)
+--   4) Block client-side LocalPlayer:Kick (RISKY: classic honeypot target)
+--   5) Optional WalkSpeed write-lock via __newindex
 -- Server-side kicks never pass through Lua and cannot be blocked from the client.
 
 local AC = {}
@@ -17,6 +22,7 @@ local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 
 AC.Status = {
+    Mode = "GHOST", -- GHOST (nothing installed) or AGGRESSIVE
     NamecallHooked = false,
     NewindexHooked = false,
     StatesFrozen = 0,
@@ -238,13 +244,25 @@ function AC.EnableSpeedLock(target)
 end
 
 ---------------------------------------------------------------------
--- Init + periodic rescan (AC tables appear lazily as game scripts run).
+-- Init. Safe by default: GHOST mode installs NOTHING.
+-- Aggressive mode (aggressive == true) arms the legacy counter-measures,
+-- each one individually governed by its Settings flag.
 ---------------------------------------------------------------------
-function AC.Init(stealth, settings)
+function AC.Init(stealth, settings, aggressive)
     StealthRef = stealth or StealthRef
     SettingsRef = settings or SettingsRef
     AC.Supported = hasExecutorCore()
 
+    if not aggressive then
+        AC.Status.Mode = "GHOST"
+        AC.Status.NamecallHooked = false
+        AC.Status.NewindexHooked = false
+        AC.Status.StatesFrozen = 0
+        AC.Status.SamplersBlinded = 0
+        return false
+    end
+
+    AC.Status.Mode = "AGGRESSIVE"
     AC.InstallNamecallGuard()
     if SettingsRef.FreezeACStates ~= false then
         task.spawn(function() AC.FreezeStates() end)
@@ -253,15 +271,14 @@ function AC.Init(stealth, settings)
         task.spawn(function() AC.BlindSamplers() end)
     end
 
-    -- Rescan passes: 5s / 15s / 30s after load.
+    -- Single deferred re-scan (AC tables appear lazily as game scripts run).
     task.spawn(function()
-        for _, delay in ipairs({5, 15, 30}) do
-            task.wait(delay)
-            if not StealthRef or StealthRef.Aborted then break end
-            if SettingsRef.FreezeACStates ~= false then AC.FreezeStates() end
-            if SettingsRef.BlindSamplers ~= false and AC.Status.SamplersBlinded == 0 then
-                AC.BlindSamplers()
-            end
+        task.wait(20)
+        if not StealthRef or StealthRef.Aborted then return end
+        if AC.Status.Mode ~= "AGGRESSIVE" then return end
+        if SettingsRef.FreezeACStates ~= false then AC.FreezeStates() end
+        if SettingsRef.BlindSamplers ~= false and AC.Status.SamplersBlinded == 0 then
+            AC.BlindSamplers()
         end
     end)
 
@@ -270,8 +287,11 @@ end
 
 function AC.Summary()
     local s = AC.Status
+    if s.Mode == "GHOST" then
+        return "GHOST: хуков нет (рекомендуется) • кик-гард OFF"
+    end
     return string.format(
-        "заморожено %d • сэмплеров %d • кик-гард %s • пробы %s • хук NEWINDEX %s",
+        "AGGRESSIVE • заморожено %d • сэмплеров %d • кик-гард %s • пробы %s • хук NEWINDEX %s",
         s.StatesFrozen or 0,
         s.SamplersBlinded or 0,
         (StealthRef.BlockKick ~= false) and "ON" or "OFF",

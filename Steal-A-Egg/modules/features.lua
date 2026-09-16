@@ -122,6 +122,92 @@ function Features:RefreshStatuses()
     if self.TrapsStatus then self.TrapsStatus:Set("Ловушки: " .. tostring(status.Traps or "—")) end
 end
 
+-- Fast egg carry: zero hold time on the game's "CarryAreaEgg" ProximityPrompt.
+-- Community-proven utility (l10scripts style): subscribe once, zero every prompt
+-- both at enable-time and whenever the game shows a fresh one.
+function Features:ApplyFastPrompt(enabled)
+    local service = game:GetService("ProximityPromptService")
+    local Players = game:GetService("Players")
+    local localPlayer = Players.LocalPlayer
+
+    if self._FastPromptConn then
+        pcall(function() self._FastPromptConn:Disconnect() end)
+        self._FastPromptConn = nil
+    end
+
+    if not enabled then return end
+
+    local function zeroPrompt(prompt)
+        pcall(function()
+            if prompt and prompt:IsA("ProximityPrompt") and prompt.Name == "CarryAreaEgg" then
+                prompt.HoldDuration = 0
+            end
+        end)
+    end
+
+    -- Existing prompts in the world right now.
+    pcall(function()
+        for _, descendant in ipairs(workspace:GetDescendants()) do
+            if descendant:IsA("ProximityPrompt") then zeroPrompt(descendant) end
+        end
+    end)
+
+    -- Fresh prompts shown later (hold begins -> zero before progress starts).
+    self._FastPromptConn = service.PromptButtonHoldBegan:Connect(function(prompt, player)
+        if player == localPlayer then zeroPrompt(prompt) end
+    end)
+end
+
+-- Soft anti-teleport: disconnect the client handlers of RE/RigSync/Refresh so
+-- the server cannot rubber-band our glides back. Reversible via Disable when
+-- the executor supports it; falls back to Disconnect otherwise.
+function Features:ApplyRigSyncCut(enabled)
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local packages = ReplicatedStorage:FindFirstChild("Packages")
+    local networking = packages and packages:FindFirstChild("Networking")
+    local remote = networking and networking:FindFirstChild("RE/RigSync/Refresh")
+    if not remote then
+        print("[MilfaCheatHUB] RigSync: remote RE/RigSync/Refresh не найден")
+        return
+    end
+
+    -- Restore previously disabled connections first.
+    if self._RigSyncConns then
+        for _, connection in ipairs(self._RigSyncConns) do
+            pcall(function() connection:Enable() end)
+        end
+        self._RigSyncConns = nil
+    end
+
+    if not enabled then return end
+
+    if type(getconnections) ~= "function" then
+        print("[MilfaCheatHUB] RigSync: getconnections не поддерживается экзекьютором")
+        return
+    end
+
+    local ok, connections = pcall(getconnections, remote.OnClientEvent)
+    if not ok or type(connections) ~= "table" then
+        print("[MilfaCheatHUB] RigSync: не удалось получить connections: " .. tostring(connections))
+        return
+    end
+
+    local patched = 0
+    local stored = {}
+    for _, connection in ipairs(connections) do
+        local disabled = pcall(function() connection:Disable() end)
+        if not disabled then
+            disabled = pcall(function() connection:Disconnect() end)
+        end
+        if disabled then
+            patched = patched + 1
+            stored[#stored + 1] = connection
+        end
+    end
+    self._RigSyncConns = stored
+    print("[MilfaCheatHUB] RigSync: отключено обработчиков: " .. patched)
+end
+
 function Features:Build()
     local colors = self.Config.Colors
     local settings = self.Config.Settings
@@ -344,11 +430,11 @@ function Features:Build()
     end)
 
     -- ============================== СИСТЕМА ==============================
-    self.UI:AddHeading(systemTab, "СТЕЛС и античит (BAC-75110)")
+    self.UI:AddHeading(systemTab, "СТЕЛС GHOST (v0.6.0)")
     local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
     local mountNote = (mountKind == "PlayerGui")
-        and "GUI в PlayerGui — держи включённой маскировку, риск выше"
-        or "GUI спрятан от игровых сканеров"
+        and "Обычный PlayerGui, чистое имя — профиль проверенных хабов (кика нет)"
+        or "Скрытый маунт (gethui/CoreGui)"
     self.StealthStatus = self.UI:AddText(systemTab, "Маунт GUI: " .. mountKind, mountNote)
     self.UI:AddToggle(systemTab, "Безопасные телепорты (glide)", settings.SafeTeleport, function(value)
         settings.SafeTeleport = value
@@ -361,47 +447,54 @@ function Features:Build()
     self.UI:AddToggle(systemTab, "Человеческие задержки (джиттер)", settings.HumanizeDelays, function(value)
         settings.HumanizeDelays = value
     end)
-    self.UI:AddToggle(systemTab, "Блокировать клиентский Kick (анти-кик)", settings.BlockKick, function(value)
-        settings.BlockKick = value
-        if self.Stealth then self.Stealth.BlockKick = value end
-    end)
 
-    -- ================== ОБХОД АНТИЧИТА (BAC) ==================
+    -- ================== ОБХОД АНТИЧИТА (BAC, opt-in) ==================
+    -- Полеarm данные: v0.4.1 хук namecall -> BAC-4513, v0.5.0 freeze/masking -> BAC-2516.
+    -- Рабочие хабы (boblo и др.) бегают ВООБЩЕ без хуков. Поэтому GHOST по умолчанию.
     local AC = self.Stealth and self.Stealth.AntiCheat or nil
     if AC then
         local function acStatusText()
-            return "Обход BAC: " .. AC:Summary()
+            return AC:Summary()
         end
-        self.ACStatus = self.UI:AddText(systemTab, "Обход античита (BAC-4513)", acStatusText())
-        self.UI:AddToggle(systemTab, "Заморозка состояний античита (getgc)", settings.FreezeACStates, function(value)
+        self.ACStatus = self.UI:AddText(systemTab, "Режим BAC", acStatusText())
+        self.UI:AddToggle(systemTab, "АГРЕССИВНЫЙ обход BAC (не рекомендуется: палятся хуки)", settings.BacAutoBypass, function(value)
+            settings.BacAutoBypass = value
+            task.spawn(function()
+                AC:Init(self.Stealth, settings, value)
+                if self.ACStatus then self.ACStatus:Set(acStatusText()) end
+            end)
+        end)
+        self.UI:AddToggle(systemTab, "  [агрессивный] Блокировать клиентский Kick", settings.BlockKick, function(value)
+            settings.BlockKick = value
+            if self.Stealth then self.Stealth.BlockKick = value end
+        end)
+        self.UI:AddToggle(systemTab, "  [агрессивный] Заморозка состояний AC (getgc)", settings.FreezeACStates, function(value)
             settings.FreezeACStates = value
-            if value then
-                task.spawn(function()
-                    AC:FreezeStates()
-                    if self.ACStatus then self.ACStatus:Set(acStatusText()) end
-                end)
-            end
         end)
-        self.UI:AddToggle(systemTab, "Ослепить сэмплер скорости (ContentCatalog.Runtime)", settings.BlindSamplers, function(value)
+        self.UI:AddToggle(systemTab, "  [агрессивный] Ослепить сэмплер скорости", settings.BlindSamplers, function(value)
             settings.BlindSamplers = value
-            if value then
-                task.spawn(function()
-                    AC:BlindSamplers()
-                    if self.ACStatus then self.ACStatus:Set(acStatusText()) end
-                end)
-            end
         end)
-        self.UI:AddToggle(systemTab, "Маскировать HttpGet-пробы (как vanilla-клиент)", settings.MaskHttpProbes, function(value)
+        self.UI:AddToggle(systemTab, "  [агрессивный] Маскировать Http-пробы (риск BAC-2516)", settings.MaskHttpProbes, function(value)
             settings.MaskHttpProbes = value
         end)
-        self.UI:AddButton(systemTab, "Пересканировать античит (getgc)", function()
+        self.UI:AddButton(systemTab, "Применить обход заново (переинициализация)", function()
             task.spawn(function()
-                if settings.FreezeACStates ~= false then AC:FreezeStates() end
-                if settings.BlindSamplers ~= false then AC:BlindSamplers() end
+                AC:Init(self.Stealth, settings, settings.BacAutoBypass == true)
                 if self.ACStatus then self.ACStatus:Set(acStatusText()) end
             end)
         end)
     end
+
+    -- ============ ИГРОВЫЕ ПОМОЩНИКИ (проверено сообществом) ============
+    self.UI:AddHeading(systemTab, "Игровые помощники")
+    self.UI:AddToggle(systemTab, "Быстрый перенос яйца (HoldDuration=0 у CarryAreaEgg)", settings.FastPrompt, function(value)
+        settings.FastPrompt = value
+        task.spawn(function() self:ApplyFastPrompt(value) end)
+    end)
+    self.UI:AddToggle(systemTab, "Отключить RigSync-ресеты (мягкий анти-ТП)", settings.RigSyncCut, function(value)
+        settings.RigSyncCut = value
+        task.spawn(function() self:ApplyRigSyncCut(value) end)
+    end)
     self.UI:AddSlider(systemTab, "Лимит AskHatch за такт", 1, 8, settings.MaxHatchPerTick, "", function(value)
         settings.MaxHatchPerTick = value
     end)
@@ -409,20 +502,14 @@ function Features:Build()
         local env = (getgenv and getgenv()) or _G
         if env.MilfaPanic then env.MilfaPanic() end
     end)
-    self.UI:AddButton(systemTab, "Найти античит-скрипты (F9-консоль)", function()
-        local found = {}
-        if self.Stealth and self.Stealth.FindAntiCheatScripts then
-            found = self.Stealth:FindAntiCheatScripts() or {}
+    self.UI:AddButton(systemTab, "Диагностика в консоль (F9)", function()
+        local env = (getgenv and getgenv()) or _G
+        if env.MilfaDiagnostics then
+            env.MilfaDiagnostics()
+            self.StealthStatus:Set("Диагностика выведена в консоль F9")
         end
-        local lines = {}
-        for index, scriptInstance in ipairs(found) do
-            lines[#lines + 1] = scriptInstance.ClassName .. " " .. scriptInstance:GetFullName()
-            if index >= 10 then break end
-        end
-        print("[MilfaCheatHUB] Античит-кандидаты: " .. (#lines > 0 and table.concat(lines, " | ") or "не найдены"))
-        self.StealthStatus:Set("Античит-кандидаты: " .. #found .. " — см. консоль F9")
     end)
-    self.UI:AddText(systemTab, "Как не словить BAC", "Стелс-скорость ON + SafeTeleport ON + джиттер ON. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер теперь отклоняет — только glide-ходьба.")
+    self.UI:AddText(systemTab, "Как не словить BAC", "Держи GHOST-режим (хуки ВЫКЛ) — рабочие хабы бегают без единого хука. Стелс-скорость ON + SafeTeleport ON + джиттер ON. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
 
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
@@ -489,6 +576,8 @@ function Features:Destroy()
     self.Automation:Destroy()
     self.ESP:SetEnabled(false)
     self.Player:Destroy()
+    pcall(function() self:ApplyFastPrompt(false) end)
+    pcall(function() self:ApplyRigSyncCut(false) end)
     if self.Config.Settings.FpsMode then
         self.Config.Settings.FpsMode = false
         self:SetFpsMode(false)

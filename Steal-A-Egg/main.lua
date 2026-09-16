@@ -1,9 +1,15 @@
 -- MilfaCheatHUB • Steal An Egg
--- Stable modular entry point v0.5.0 (anticheat bypass).
+-- Stable modular entry point v0.6.0 (GHOST minimal footprint).
+-- Doctrine based on field evidence: working open-source hubs for this game make
+-- 1-2 HttpGet calls, mount a plain-named GUI into PlayerGui and install ZERO
+-- hooks — and never get kicked. Our aggressive counters (hooks/getgc/masking)
+-- triggered the opposite: BAC-4513, then BAC-2516. So v0.6.0 ships dark:
+--   * one single bundle request instead of 14 module fetches
+--   * no namecall/newindex/getgc anything unless the user opts in (SYS tab)
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.5.0"
+local VERSION = "0.6.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -55,15 +61,19 @@ end
 env.MilfaPanic = env.MilfaCheatHUBCleanup
 
 local function loadModule(relativePath)
-    local url = BASE_URL .. relativePath .. "?v=" .. VERSION
     local source
-    for attempt = 1, 3 do
-        local requestOk, result = pcall(game.HttpGet, game, url)
-        if requestOk and type(result) == "string" and #result > 10 then
-            source = result
-            break
+    if bundleSources and type(bundleSources[relativePath]) == "string" then
+        source = bundleSources[relativePath]
+    else
+        local url = BASE_URL .. relativePath .. "?v=" .. VERSION
+        for attempt = 1, 3 do
+            local requestOk, result = pcall(game.HttpGet, game, url)
+            if requestOk and type(result) == "string" and #result > 10 then
+                source = result
+                break
+            end
+            if attempt < 3 then task.wait(0.35 * attempt) end
         end
-        if attempt < 3 then task.wait(0.35 * attempt) end
     end
     if not source then
         error("Не удалось загрузить модуль: " .. relativePath, 0)
@@ -81,6 +91,39 @@ local function loadModule(relativePath)
     return module
 end
 
+-- Console diagnostics (run MilfaDiagnostics() in the executor console):
+-- shows mount kind, AC mode and client anticheat script candidates.
+env.MilfaDiagnostics = function()
+    local stealth = state.Stealth
+    local ac = state.AntiCheat
+    print("[MilfaCheatHUB] Диагностика v" .. VERSION)
+    print("  GUI маунт: " .. tostring(stealth and stealth.MountKind or "нет"))
+    print("  Режим BAC: " .. (ac and ac.Summary and ac.Summary() or "модуль не загружен"))
+    if stealth and stealth.FindAntiCheatScripts then
+        local found = stealth.FindAntiCheatScripts()
+        print("  Античит-кандидаты (" .. #found .. "):")
+        for _, script_ in ipairs(found) do
+            print("    - " .. script_.GetFullName())
+        end
+    end
+    print("  bundle: " .. (bundleSources and "используется (1 запрос)" or "нет (пофайлово)"))
+end
+
+-- GHOST network profile: ONE request for all modules, exactly like the hubs
+-- that never get kicked. If the bundle is unavailable we fall back to the
+-- classic per-module fetches, so the script still works during rollouts.
+local bundleSources
+local function loadBundle()
+    local requestOk, result = pcall(game.HttpGet, game, BASE_URL .. "bundle.lua?v=" .. VERSION)
+    if not requestOk or type(result) ~= "string" or #result < 50 then return false end
+    local chunk, err = loadstring(result, "@MilfaCheatHUB/bundle.lua")
+    if not chunk then return false end
+    local runOk, table_ = pcall(chunk)
+    if not runOk or type(table_) ~= "table" then return false end
+    bundleSources = table_
+    return true
+end
+
 -- Defined BEFORE the xpcall block. In v0.4.0 it was first used above its
 -- own declaration, which crashed every launch with
 -- "attempt to call a nil value" at line 79.
@@ -92,6 +135,10 @@ local function loadingStep(progress, text)
 end
 
 local success, failure = xpcall(function()
+    -- One bundle request for ALL modules (GHOST profile). Silent fallback to
+    -- per-module fetches keeps the loader working if the bundle lags behind.
+    local bundleOk = loadBundle()
+
     local Config = loadModule("modules/config.lua")
 
     loadingStep(0.08, "Включаем стелс-режим...")
@@ -99,21 +146,26 @@ local success, failure = xpcall(function()
     state.Stealth = Stealth
     Stealth.SafeTeleport = Config.Settings.SafeTeleport
     Stealth.GlideSpeed = Config.Settings.GlideSpeed
-    loadingStep(0.10, "Обходим античит (BAC)...")
+    Stealth.GuiMount = Config.Settings.GuiMount or "PlayerGui"
+    Stealth.BlockKick = Config.Settings.BlockKick == true
+
+    loadingStep(0.10, "Режим GHOST (без хуков)...")
     local AntiCheat = loadModule("modules/anticheat.lua")
     state.AntiCheat = AntiCheat
     Stealth.AntiCheat = AntiCheat
     task.spawn(function()
-        AntiCheat.Init(Stealth, Config.Settings)
-        if AntiCheat.Status.NamecallHooked then
-            print("[MilfaCheatHUB] Обход античита активен: кик-гард + маскировка проб + getgc")
+        -- v0.6.0: NOTHING is hooked unless the user explicitly opted in.
+        -- Aggressive counters are a proven kick source (BAC-4513 / BAC-2516).
+        AntiCheat.Init(Stealth, Config.Settings, Config.Settings.BacAutoBypass == true)
+        if Config.Settings.BacAutoBypass == true and AntiCheat.Status.NamecallHooked then
+            print("[MilfaCheatHUB] АГРЕССИВНЫЙ обход BAC включён (риск детекта на тебе)")
         end
     end)
 
     local UI = loadModule("modules/ui.lua")
     state.Loader = UI.ShowLoader(Config, Stealth)
 
-    loadingStep(0.12, "Стелс: " .. tostring(Stealth.MountKind) .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
+    loadingStep(0.12, "GHOST: " .. tostring(Stealth.MountKind) .. (bundleOk and " • bundle" or " • файлы") .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
 
     loadingStep(0.25, "Загружаем сканер...")
     local Scanner = loadModule("modules/scanner.lua")
@@ -163,7 +215,7 @@ local success, failure = xpcall(function()
         state.Loader = nil
     end
 
-    print("[MilfaCheatHUB] Steal An Egg v" .. Config.Version .. " loaded (stealth: " .. tostring(Stealth.MountKind) .. ")")
+    print("[MilfaCheatHUB] Steal An Egg v" .. Config.Version .. " loaded (GHOST: " .. tostring(Stealth.MountKind) .. ", " .. (bundleOk and "bundle" or "files") .. ", хуков: 0)")
 end, debug.traceback)
 
 if not success then

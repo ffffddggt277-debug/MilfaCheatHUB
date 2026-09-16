@@ -1,4 +1,4 @@
--- MilfaCheatHUB • compact neon interface v0.4 (stealth names + hidden mount)
+-- MilfaCheatHUB • compact neon interface v0.6 (GHOST: clean names, PlayerGui-first)
 
 local UI = {}
 local TweenService = game:GetService("TweenService")
@@ -21,21 +21,22 @@ local function environment()
 end
 
 local function mount(gui)
-    -- Preferred: stealth module (gethui / CoreGui / disguised PlayerGui)
+    -- Preferred: stealth module (PlayerGui-first per v0.6.0 GHOST doctrine)
     if StealthRef and StealthRef.MountScreenGui then
-        local ok, kind = pcall(StealthRef.MountScreenGui, gui, true)
+        local ok, kind = pcall(StealthRef.MountScreenGui, gui)
         if ok and kind then return true end
     end
 
-    -- Legacy fallback chain
+    -- Legacy fallback: plain PlayerGui first (proven safe in this game),
+    -- hidden roots second — mirrors the working open-source hubs.
     local targets = {}
+    local player = Players.LocalPlayer
+    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
     if gethui then
         local ok, value = pcall(gethui)
         if ok and value then targets[#targets + 1] = value end
     end
     targets[#targets + 1] = CoreGui
-    local player = Players.LocalPlayer
-    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
 
     for _, target in ipairs(targets) do
         if target then
