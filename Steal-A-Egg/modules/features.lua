@@ -1,9 +1,9 @@
--- MilfaCheatHUB • feature controller v0.3
+-- MilfaCheatHUB • feature controller v0.4 (stealth)
 
 local Features = {}
 Features.__index = Features
 
-function Features.new(config, ui, scanner, network, positions, esp, eggs, automation, player, rarity, alive)
+function Features.new(config, ui, scanner, network, positions, esp, eggs, automation, player, rarity, alive, stealth)
     local self = setmetatable({}, Features)
     self.Config = config
     self.UI = ui
@@ -16,9 +16,25 @@ function Features.new(config, ui, scanner, network, positions, esp, eggs, automa
     self.Player = player
     self.Rarity = rarity
     self.Alive = alive
+    self.Stealth = stealth
     self.Running = false
     self.FpsOriginal = {}
     return self
+end
+
+-- Glide wrapper used by every manual teleport button.
+function Features:GlideTo(position, height)
+    local stealth = self.Stealth
+    if stealth and stealth.GlideTo and self.Config.Settings.SafeTeleport then
+        stealth.SafeTeleport = true
+        stealth.GlideSpeed = self.Config.Settings.GlideSpeed or 48
+        task.spawn(function()
+            pcall(stealth.GlideTo, stealth, position, {Height = height or 2.5})
+        end)
+        return
+    end
+    local root = self.Eggs:GetRoot()
+    if root then root.CFrame = CFrame.new(position + Vector3.new(0, height or 2.5, 0)) end
 end
 
 function Features:SetFpsMode(enabled)
@@ -79,8 +95,7 @@ function Features:UpdateEggs()
         self.EggList:Rebuild(filtered, {
             OnTeleport = function(record)
                 if record.Position then
-                    local root = self.Eggs:GetRoot()
-                    if root then root.CFrame = CFrame.new(record.Position + Vector3.new(0, 2.5, 0)) end
+                    self:GlideTo(record.Position)
                 end
             end,
             OnSteal = function(record)
@@ -276,8 +291,17 @@ function Features:Build()
     end)
 
     -- ============================== ИГРОК ==============================
-    self.UI:AddHeading(playerTab, "Персонаж")
-    self.UI:AddSlider(playerTab, "Скорость (WalkSpeed)", 16, 250, settings.WalkSpeed, "", function(value)
+    self.UI:AddHeading(playerTab, "Персонаж (стелс по умолчанию)")
+    self.SpeedStatus = self.UI:AddText(playerTab, "Режим скорости", "Стелс: WalkSpeed остаётся 16, движение через CFrame")
+    self.UI:AddToggle(playerTab, "СТЕЛС-скорость (не трогает WalkSpeed)", settings.StealthSpeed, function(value)
+        settings.StealthSpeed = value
+        self.SpeedStatus:Set(value and "Стелс: WalkSpeed = 16, движение через CFrame" or "Классика: прямой WalkSpeed (риск BAC)")
+        if not value then self.Player:ApplySpeed() end
+    end)
+    self.UI:AddSlider(playerTab, "Стелс-скорость, ст/с (держи < 60)", 16, 90, settings.StealthSpeedValue, "", function(value)
+        settings.StealthSpeedValue = value
+    end)
+    self.UI:AddSlider(playerTab, "Классическая скорость (WalkSpeed)", 16, 250, settings.WalkSpeed, "", function(value)
         settings.WalkSpeed = value
         self.Player:ApplySpeed()
     end)
@@ -312,12 +336,50 @@ function Features:Build()
     self.UI:AddButton(pointsTab, "Телепорт на базу", function()
         local home = self.Positions:GetHome()
         if home then
-            local root = self.Eggs:GetRoot()
-            if root then root.CFrame = CFrame.new(home + Vector3.new(0, 3, 0)) end
+            self:GlideTo(home, 3)
         end
     end)
 
     -- ============================== СИСТЕМА ==============================
+    self.UI:AddHeading(systemTab, "СТЕЛС и античит (BAC-75110)")
+    local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
+    local mountNote = (mountKind == "PlayerGui")
+        and "GUI в PlayerGui — держи включённой маскировку, риск выше"
+        or "GUI спрятан от игровых сканеров"
+    self.StealthStatus = self.UI:AddText(systemTab, "Маунт GUI: " .. mountKind, mountNote)
+    self.UI:AddToggle(systemTab, "Безопасные телепорты (glide)", settings.SafeTeleport, function(value)
+        settings.SafeTeleport = value
+        if self.Stealth then self.Stealth.SafeTeleport = value end
+    end)
+    self.UI:AddSlider(systemTab, "Скорость glide, ст/с (держи < 70)", 20, 100, settings.GlideSpeed, "", function(value)
+        settings.GlideSpeed = value
+        if self.Stealth then self.Stealth.GlideSpeed = value end
+    end)
+    self.UI:AddToggle(systemTab, "Человеческие задержки (джиттер)", settings.HumanizeDelays, function(value)
+        settings.HumanizeDelays = value
+    end)
+    self.UI:AddSlider(systemTab, "Лимит AskHatch за такт", 1, 8, settings.MaxHatchPerTick, "", function(value)
+        settings.MaxHatchPerTick = value
+    end)
+    self.UI:AddButton(systemTab, "PANIC: убрать все следы (GUI, ESP, скорость)", function()
+        local env = (getgenv and getgenv()) or _G
+        if env.MilfaPanic then env.MilfaPanic() end
+    end)
+    self.UI:AddButton(systemTab, "Найти античит-скрипты (F9-консоль)", function()
+        local found = {}
+        if self.Stealth and self.Stealth.FindAntiCheatScripts then
+            found = self.Stealth:FindAntiCheatScripts() or {}
+        end
+        local lines = {}
+        for index, scriptInstance in ipairs(found) do
+            lines[#lines + 1] = scriptInstance.ClassName .. " " .. scriptInstance:GetFullName()
+            if index >= 10 then break end
+        end
+        print("[MilfaCheatHUB] Античит-кандидаты: " .. (#lines > 0 and table.concat(lines, " | ") or "не найдены"))
+        self.StealthStatus:Set("Античит-кандидаты: " .. #found .. " — см. консоль F9")
+    end)
+    self.UI:AddText(systemTab, "Как не словить BAC", "Стелс-скорость ON + SafeTeleport ON + джиттер ON. Держи glide < 70 ст/с и стелс-скорость < 60 ст/с.")
+
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
     self.UI:AddButton(systemTab, "Проверить известные Remotes", function()
@@ -354,7 +416,7 @@ function Features:Build()
     self.UI:AddText(
         systemTab,
         "Сборка " .. self.Config.Version,
-        "50+ функций: автокража с SlotKey, автопродажа через SellPet, ESP редкостей, автохатч по инвентарю, апгрейды, питомцы, ловушки, скорость, noclip, сервер-хоп."
+        "STEALTH: скрытый маунт GUI/ESP, случайные имена, glide-телепорты, стелс-скорость без WalkSpeed, джиттер задержек, PANIC (getgenv().MilfaPanic()). 50+ функций из 0.3.x сохранены."
     )
 end
 

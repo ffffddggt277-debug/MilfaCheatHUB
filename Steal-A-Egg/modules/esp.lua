@@ -1,9 +1,23 @@
--- MilfaCheatHUB • client-side Egg ESP with rarity colors
+-- MilfaCheatHUB • client-side Egg ESP with rarity colors (stealth v0.4)
 
 local ESP = {}
 ESP.__index = ESP
 
-local function safeParent(folder)
+local function randomName(stealth)
+    if stealth and stealth.RandomName then return stealth.RandomName(14) end
+    return "ESP_" .. tostring(math.random(100000, 999999))
+end
+
+local function safeParent(folder, stealth)
+    -- Preferred: shared hidden container (CoreGui/gethui) — invisible to game scanners
+    if stealth and stealth.GetContainer then
+        local ok, container = pcall(stealth.GetContainer, stealth)
+        if ok and container then
+            local attached = pcall(function() folder.Parent = container end)
+            if attached and folder.Parent == container then return true end
+        end
+    end
+
     local targets = {}
     if gethui then
         local ok, value = pcall(gethui)
@@ -22,15 +36,16 @@ local function safeParent(folder)
     return false
 end
 
-function ESP.new(config, rarity)
+function ESP.new(config, rarity, stealth)
     local self = setmetatable({}, ESP)
     self.Config = config
     self.Rarity = rarity
+    self.Stealth = stealth
     self.Enabled = false
     self.Objects = {}
     self.Folder = Instance.new("Folder")
-    self.Folder.Name = "MilfaCheatHUB_ESP"
-    safeParent(self.Folder)
+    self.Folder.Name = randomName(stealth)
+    safeParent(self.Folder, stealth)
     return self
 end
 
@@ -76,7 +91,7 @@ function ESP:Refresh(records, scanner)
                 local outlineColor = useRarityColor and self.Rarity.Color(rarityId) or colors.Accent
 
                 local highlight = Instance.new("Highlight")
-                highlight.Name = "MilfaEggHighlight"
+                highlight.Name = randomName(self.Stealth)
                 highlight.Adornee = instance
                 highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                 highlight.FillColor = fillColor
@@ -87,7 +102,7 @@ function ESP:Refresh(records, scanner)
                 self.Objects[#self.Objects + 1] = highlight
 
                 local billboard = Instance.new("BillboardGui")
-                billboard.Name = "MilfaEggLabel"
+                billboard.Name = randomName(self.Stealth)
                 billboard.Adornee = adornee
                 billboard.Size = UDim2.fromOffset(210, 52)
                 billboard.StudsOffset = Vector3.new(0, 3.4, 0)

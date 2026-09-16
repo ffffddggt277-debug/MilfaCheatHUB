@@ -1,4 +1,4 @@
--- MilfaCheatHUB • compact neon interface v0.2
+-- MilfaCheatHUB • compact neon interface v0.4 (stealth names + hidden mount)
 
 local UI = {}
 local TweenService = game:GetService("TweenService")
@@ -6,11 +6,28 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
+math.randomseed(os.time() + math.floor(os.clock() * 100000))
+
+-- Active stealth module (set by ShowLoader/UI.new).
+local StealthRef = nil
+
+local function randomGuiName()
+    if StealthRef and StealthRef.RandomName then return StealthRef.RandomName(18) end
+    return "UI_" .. tostring(math.random(100000, 999999))
+end
+
 local function environment()
     return (getgenv and getgenv()) or _G
 end
 
 local function mount(gui)
+    -- Preferred: stealth module (gethui / CoreGui / disguised PlayerGui)
+    if StealthRef and StealthRef.MountScreenGui then
+        local ok, kind = pcall(StealthRef.MountScreenGui, gui, true)
+        if ok and kind then return true end
+    end
+
+    -- Legacy fallback chain
     local targets = {}
     if gethui then
         local ok, value = pcall(gethui)
@@ -136,9 +153,10 @@ local function createLogo(parent, config, size, position, circular)
     return holder
 end
 
-function UI.ShowLoader(config)
+function UI.ShowLoader(config, stealth)
+    StealthRef = stealth or StealthRef
     local gui = Instance.new("ScreenGui")
-    gui.Name = "MilfaCheatHUB_Loading"
+    gui.Name = randomGuiName()
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.DisplayOrder = 999999
@@ -221,7 +239,8 @@ function UI.ShowLoader(config)
     return controller
 end
 
-function UI.new(config)
+function UI.new(config, stealth)
+    StealthRef = stealth or StealthRef
     local self = {Config = config, Tabs = {}, Connections = {}, Active = nil, CloseCallback = nil}
     local colors = config.Colors
     local width = config.Window.Width
@@ -229,7 +248,7 @@ function UI.new(config)
     local sidebarWidth = config.Window.SidebarWidth
 
     local gui = Instance.new("ScreenGui")
-    gui.Name = "MilfaCheatHUB_StealAnEgg"
+    gui.Name = randomGuiName()
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.DisplayOrder = 99999
@@ -348,7 +367,7 @@ function UI.new(config)
     content.Parent = main
 
     local bubble = Instance.new("TextButton")
-    bubble.Name = "MilfaCheatHUB_Bubble"
+    bubble.Name = randomGuiName()
     bubble.Size = UDim2.fromOffset(54, 54)
     bubble.Position = UDim2.new(0, 18, 0.5, -27)
     bubble.BackgroundColor3 = colors.Background

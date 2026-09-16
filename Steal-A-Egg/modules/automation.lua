@@ -1,11 +1,13 @@
--- MilfaCheatHUB • automation engine v0.3.1
+-- MilfaCheatHUB • automation engine v0.4 (stealth)
 -- Auto steal / place / hatch / sell / collect / treadmill / upgrades / pets / traps / server hop.
--- Remote shapes are RSpy-confirmed (see LIST.md).
+-- Remote shapes are RSpy-confirmed (see LIST.md). All teleports glide, all delays humanized.
 
 local Automation = {}
 Automation.__index = Automation
+local AutomationRef = nil
+AutomationRef = Automation
 
-function Automation.new(config, eggs, network, positions, scanner, rarity)
+function Automation.new(config, eggs, network, positions, scanner, rarity, stealth)
     local self = setmetatable({}, Automation)
     self.Config = config
     self.Eggs = eggs
@@ -13,6 +15,7 @@ function Automation.new(config, eggs, network, positions, scanner, rarity)
     self.Positions = positions
     self.Scanner = scanner
     self.Rarity = rarity
+    self.Stealth = stealth
     self.Running = false
     self.EmptyRuns = 0
     self.LastHop = 0
@@ -37,11 +40,33 @@ local function getRoot()
     return character and character:FindFirstChild("HumanoidRootPart"), character
 end
 
-local function teleport(position, height)
+-- BAC-safe teleport: glide like fast walking instead of a 300-stud CFrame jump.
+-- Yields while gliding so remote calls fire only when we actually arrived.
+local function teleport(position, height, glideSpeed)
     local root = getRoot()
     if not root or not position then return false end
+    local stealth = AutomationRef and AutomationRef.Stealth
+    if stealth and stealth.GlideTo and AutomationRef.Config.Settings.SafeTeleport then
+        stealth.SafeTeleport = true
+        stealth.GlideSpeed = glideSpeed or AutomationRef.Config.Settings.GlideSpeed or 48
+        pcall(stealth.GlideTo, stealth, position, {Height = height or 2.5})
+        return true
+    end
     root.CFrame = CFrame.new(position + Vector3.new(0, height or 2.5, 0))
     return true
+end
+
+local function pause(base)
+    local stealth = AutomationRef and AutomationRef.Stealth
+    local value = base
+    if AutomationRef and AutomationRef.Config.Settings.HumanizeDelays then
+        if stealth and stealth.Jitter then
+            value = stealth.Jitter(base)
+        else
+            value = base * (0.75 + math.random() * 0.6)
+        end
+    end
+    if value and value > 0 then task.wait(value) end
 end
 
 local function firePrompt(prompt)
@@ -126,7 +151,7 @@ function Automation:StealOne(record)
 
     if settings.StealTeleport then
         teleport(record.Position)
-        task.wait(0.15)
+        pause(0.2)
     end
 
     local networking = self.Network:GetFolder()
@@ -139,14 +164,14 @@ function Automation:StealOne(record)
     local promptOk = firePrompt(record.Prompt)
 
     -- Give the server a moment, then walk home and place.
-    task.wait(0.3)
+    pause(0.35)
     local placed = false
     if settings.AutoReturn then
         local home = self.Positions:GetHome()
         if home then
             if settings.StealTeleport then
                 teleport(home, 3)
-                task.wait(0.3)
+                pause(0.3)
             end
             local uid = self.Eggs:GetHeldEggUid()
             if uid then
@@ -205,7 +230,7 @@ function Automation:PlaceHeldEggs()
                     and (item:GetAttribute("ItemType") == "AssetEgg" or string.find(string.lower(item.Name), "egg", 1, true)) then
                     local ok = invoke(askPlace, {Uid = tostring(item:GetAttribute("UID")), LocalCFrame = CFrame.new(0, -0.5, 0)})
                     if ok then count = count + 1 end
-                    task.wait(0.15)
+                    pause(0.2)
                 end
             end
         end
@@ -218,15 +243,16 @@ function Automation:HatchReady()
     local networking = self.Network:GetFolder()
     local askHatch = networking and networking:FindFirstChild("RF/EggWorld/AskHatch")
     local fired = 0
+    local cap = math.max(1, self.Config.Settings.MaxHatchPerTick or 4)
 
     -- 1) Best source: placed eggs from save.EggInventory. RSpy: AskHatch("hex-uid") — plain string.
     local inv = self.Eggs:GetEggInventory()
     if askHatch and inv then
         for uid, entry in pairs(inv) do
-            if fired >= 8 then break end
+            if fired >= cap then break end
             if type(entry) == "table" and entry.Placement ~= nil and not entry.Locked then
                 local ok = invoke(askHatch, tostring(uid))
-                if ok then fired = fired + 1; task.wait(0.1) end
+                if ok then fired = fired + 1; pause(0.2) end
             end
         end
     end
@@ -249,18 +275,18 @@ function Automation:HatchReady()
                     end)
                 end
             end
-            if fired > 8 then break end
+            if fired > cap then break end
         end
     end
 
     -- 3) Remote fallback for eggs placed near home (plain string uid)
-    if askHatch and fired < 4 then
+    if askHatch and fired < cap then
         local home = self.Positions:GetHome()
         if home then
             for _, record in ipairs(self.Eggs:Scan()) do
-                if record.Position and (record.Position - home).Magnitude < 60 and fired < 8 then
+                if record.Position and (record.Position - home).Magnitude < 60 and fired < cap then
                     local ok = invoke(askHatch, tostring(record.Uid))
-                    if ok then fired = fired + 1 end
+                    if ok then fired = fired + 1; pause(0.2) end
                 end
             end
         end
@@ -376,7 +402,7 @@ function Automation:WearBestPets()
         if trigger then pcall(function() trigger:FireServer(Instance.new("Tool")) end) end
         local ok = invoke(wear, item.Uid)
         if ok then worn = worn + 1 end
-        task.wait(0.2)
+        pause(0.25)
     end
     if best then pcall(function() best:InvokeServer() end) end
     return worn > 0, "надето: " .. worn
@@ -421,7 +447,7 @@ function Automation:SellOnce()
     local networking = self.Network:GetFolder()
     local wearTool = networking and networking:FindFirstChild("RF/EggWorld/AskWearTool")
     local perTick = math.max(1, settings.SellPerTick or 8)
-    local pause = math.max(0.05, settings.SellPerDelay or 0.15)
+    local sellPause = math.max(0.05, settings.SellPerDelay or 0.15)
 
     local function sellRemoteCall(...)
         if sell:IsA("RemoteEvent") then
@@ -445,11 +471,11 @@ function Automation:SellOnce()
                         local ok = false
                         if wearTool then
                             invoke(wearTool, tostring(uid))
-                            task.wait(0.08)
+                            pause(0.12)
                         end
                         ok = sellRemoteCall({tostring(uid)}) or sellRemoteCall(tostring(uid))
                         if ok then soldEggs = soldEggs + 1 end
-                        task.wait(pause)
+                        pause(sellPause)
                     end
                 end
             end
@@ -463,11 +489,11 @@ function Automation:SellOnce()
                     local ok = false
                     if wearTool then
                         invoke(wearTool, tostring(record.Uid))
-                        task.wait(0.08)
+                        pause(0.12)
                     end
                     ok = sellRemoteCall({tostring(record.Uid)}) or sellRemoteCall(tostring(record.Uid))
                     if ok then soldEggs = soldEggs + 1 end
-                    task.wait(pause)
+                    pause(sellPause)
                 end
             end
         end
@@ -486,7 +512,7 @@ function Automation:SellOnce()
                     if not self:IsRarityAllowed(rarity, settings.KeepRarities) then
                         local ok = sellRemoteCall(tostring(uid)) or sellRemoteCall({tostring(uid)})
                         if ok then soldPets = soldPets + 1 end
-                        task.wait(pause)
+                        pause(sellPause)
                     end
                 end
             end
@@ -536,7 +562,7 @@ function Automation:FeedMonster()
     local part = target:IsA("BasePart") and target or target:FindFirstChildWhichIsA("BasePart", true)
     if part then
         teleport(part.Position)
-        task.wait(0.2)
+        pause(0.3)
         local feed = networking and networking:FindFirstChild("RF/MonsterParasite/AskFeed")
         invoke(feed)
         return true
@@ -593,7 +619,7 @@ function Automation:Start(alive)
                 end
 
                 -- Auto hatch
-                if settings.AutoHatch and now - lastHatch > 2 then
+                if settings.AutoHatch and now - lastHatch > 3 then
                     lastHatch = now
                     local count = self:HatchReady()
                     self.Status.Hatch = count > 0 and ("вылуплено: " .. count) or "жду готовые яйца"
@@ -658,7 +684,10 @@ function Automation:Start(alive)
                 end
             end)
             if not ok then self.Status.Steal = "ошибка: " .. tostring(err) end
-            task.wait(math.max(0.4, settings.StealDelay or 2))
+            -- Humanized loop delay: never a fixed robotic interval (BAC rate heuristics).
+            local loopDelay = math.max(1.0, settings.StealDelay or 2)
+            if settings.HumanizeDelays then loopDelay = loopDelay * (0.85 + math.random() * 0.4) end
+            task.wait(loopDelay)
         end
     end)
 end

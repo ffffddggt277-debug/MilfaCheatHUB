@@ -1,9 +1,9 @@
 -- MilfaCheatHUB • Steal An Egg
--- Stable modular entry point v0.3.1.
+-- Stable modular entry point v0.4.0 (stealth).
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.3.1"
+local VERSION = "0.4.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -40,6 +40,8 @@ local function cleanup()
     state.ESP = nil
     state.App = nil
     state.Loader = nil
+    if state.Stealth then pcall(function() state.Stealth.Shutdown() end) end
+    state.Stealth = nil
 end
 
 env.MilfaCheatHUBCleanup = function()
@@ -48,6 +50,9 @@ env.MilfaCheatHUBCleanup = function()
     end
     cleanup()
 end
+
+-- Instant panic: kills GUI, ESP, automation and restores the character.
+env.MilfaPanic = env.MilfaCheatHUBCleanup
 
 local function loadModule(relativePath)
     local url = BASE_URL .. relativePath .. "?v=" .. VERSION
@@ -70,65 +75,72 @@ end
 
 local success, failure = xpcall(function()
     local Config = loadModule("modules/config.lua")
-    local UI = loadModule("modules/ui.lua")
-    state.Loader = UI.ShowLoader(Config)
 
-    local function loading(progress, text)
+    loadingStep(0.08, "Включаем стелс-режим...")
+    local Stealth = loadModule("modules/stealth.lua")
+    state.Stealth = Stealth
+    Stealth.SafeTeleport = Config.Settings.SafeTeleport
+    Stealth.GlideSpeed = Config.Settings.GlideSpeed
+
+    local UI = loadModule("modules/ui.lua")
+    state.Loader = UI.ShowLoader(Config, Stealth)
+
+    local function loadingStep(progress, text)
         if state.Loader then state.Loader:Set(progress, text) end
         task.wait()
     end
 
-    loading(0.12, game.PlaceId == EXPECTED_PLACE_ID and "Игра определена" or "Открыта другая игра")
+    loadingStep(0.12, "Стелс: " .. tostring(Stealth.MountKind) .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
 
-    loading(0.25, "Загружаем сканер...")
+    loadingStep(0.25, "Загружаем сканер...")
     local Scanner = loadModule("modules/scanner.lua")
     local scanner = Scanner.new(Config)
 
-    loading(0.35, "Проверяем Networking...")
+    loadingStep(0.30, "Проверяем Networking...")
     local Network = loadModule("modules/network.lua")
     local network = Network.new(Config)
 
-    loading(0.42, "Определяем редкости...")
+    loadingStep(0.38, "Определяем редкости...")
     local Rarity = loadModule("modules/rarity.lua")
 
-    loading(0.50, "Определяем точки...")
+    loadingStep(0.46, "Определяем точки...")
     local Positions = loadModule("modules/positions.lua")
     local positions = Positions.new(Config, scanner)
 
-    loading(0.58, "Подготавливаем ESP...")
+    loadingStep(0.54, "Подготавливаем ESP...")
     local ESP = loadModule("modules/esp.lua")
-    state.ESP = ESP.new(Config, Rarity)
+    state.ESP = ESP.new(Config, Rarity, Stealth)
 
-    loading(0.66, "Запускаем движок яиц...")
+    loadingStep(0.62, "Запускаем движок яиц...")
     local Eggs = loadModule("modules/eggs.lua")
     local eggs = Eggs.new(Config, scanner, network, Rarity)
 
-    loading(0.74, "Создаём компактный GUI...")
-    state.App = UI.new(Config)
+    loadingStep(0.70, "Создаём компактный GUI...")
+    state.App = UI.new(Config, Stealth)
     state.App:SetCloseCallback(env.MilfaCheatHUBCleanup)
 
-    loading(0.82, "Подключаем автоматизацию...")
+    loadingStep(0.78, "Подключаем автоматизацию...")
     local Automation = loadModule("modules/automation.lua")
-    local automation = Automation.new(Config, eggs, network, positions, scanner, Rarity)
+    local automation = Automation.new(Config, eggs, network, positions, scanner, Rarity, Stealth)
 
-    loading(0.88, "Настраиваем персонажа...")
+    loadingStep(0.86, "Настраиваем персонажа...")
     local Player = loadModule("modules/player.lua")
-    local player = Player.new(Config)
+    local player = Player.new(Config, Stealth)
 
-    loading(0.94, "Подключаем функции...")
+    loadingStep(0.93, "Подключаем функции...")
     local Features = loadModule("modules/features.lua")
-    state.Features = Features.new(Config, state.App, scanner, network, positions, state.ESP, eggs, automation, player, Rarity, alive)
+    state.Features = Features.new(Config, state.App, scanner, network, positions, state.ESP, eggs, automation, player, Rarity, alive, Stealth)
     state.Features:Build()
     state.Features:Start()
 
-    loading(1, "MilfaCheatHUB готов")
+    loadingStep(1, "MilfaCheatHUB готов")
     task.wait(0.25)
     if state.Loader then
         state.Loader:Destroy()
         state.Loader = nil
     end
 
-    print("[MilfaCheatHUB] Steal An Egg v" .. Config.Version .. " loaded")
+    print("[MilfaCheatHUB] Steal An Egg v" .. Config.Version .. " loaded (stealth: " .. tostring(Stealth.MountKind) .. ")")
 end, debug.traceback)
 
 if not success then

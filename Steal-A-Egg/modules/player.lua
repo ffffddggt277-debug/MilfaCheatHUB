@@ -1,12 +1,14 @@
--- MilfaCheatHUB • local player tweaks
--- Speed, jump, infinite jump, noclip, click TP, anti-AFK.
+-- MilfaCheatHUB • local player tweaks (stealth v0.4)
+-- Speed without touching Humanoid.WalkSpeed (CFrame glide), jump, infinite jump,
+-- noclip, glide click-TP, anti-AFK. BAC-safe by default.
 
 local Player = {}
 Player.__index = Player
 
-function Player.new(config)
+function Player.new(config, stealth)
     local self = setmetatable({}, Player)
     self.Config = config
+    self.Stealth = stealth
     self.Players = game:GetService("Players")
     self.UserInput = game:GetService("UserInputService")
     self.RunService = game:GetService("RunService")
@@ -15,6 +17,7 @@ function Player.new(config)
     self.Connections = {}
     self.Original = {}
     self:WatchRespawn()
+    self:WatchStealthSpeed()
     return self
 end
 
@@ -23,13 +26,43 @@ function Player:GetHumanoid()
     return character and character:FindFirstChildOfClass("Humanoid")
 end
 
+-- Classic mode: sets WalkSpeed/JumpPower (visible to client anticheat watchers).
+-- Stealth mode: does nothing — speed comes from CFrame glide below.
 function Player:ApplySpeed()
+    local settings = self.Config.Settings
+    if settings.StealthSpeed then return end
     local humanoid = self:GetHumanoid()
     if humanoid then
         humanoid.UseJumpPower = true
-        humanoid.WalkSpeed = self.Config.Settings.WalkSpeed or 16
-        humanoid.JumpPower = self.Config.Settings.JumpPower or 50
+        humanoid.WalkSpeed = settings.WalkSpeed or 16
+        humanoid.JumpPower = settings.JumpPower or 50
     end
+end
+
+-- STEALTH SPEED: character glides via CFrame while the player holds movement.
+-- Humanoid.WalkSpeed stays 16 so WalkSpeed-watchers never fire.
+function Player:WatchStealthSpeed()
+    if self.Connections.StealthSpeed then return end
+    self.Connections.StealthSpeed = self.RunService.Heartbeat:Connect(function(deltaTime)
+        local settings = self.Config.Settings
+        if not settings.StealthSpeed then return end
+
+        local character = self.Player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not root or humanoid.Health <= 0 then return end
+
+        local direction = humanoid.MoveDirection
+        if direction.Magnitude < 0.05 then return end
+
+        local speed = math.clamp(settings.StealthSpeedValue or 32, 16, 90)
+        -- Humanized micro-jitter so movement is not perfectly linear.
+        if settings.HumanizeDelays then
+            speed = speed * (0.92 + math.random() * 0.16)
+        end
+        local step = direction * speed * deltaTime
+        root.CFrame = root.CFrame + step
+    end)
 end
 
 -- Re-apply speed/jump after respawn or character switch.
@@ -42,9 +75,16 @@ function Player:WatchRespawn()
 end
 
 function Player:ResetSpeed()
-    self.Config.Settings.WalkSpeed = 16
-    self.Config.Settings.JumpPower = 50
-    self:ApplySpeed()
+    local settings = self.Config.Settings
+    settings.WalkSpeed = 16
+    settings.JumpPower = 50
+    settings.StealthSpeed = false
+    local humanoid = self:GetHumanoid()
+    if humanoid then
+        humanoid.UseJumpPower = true
+        humanoid.WalkSpeed = 16
+        humanoid.JumpPower = 50
+    end
 end
 
 function Player:SetInfiniteJump(value)
@@ -88,6 +128,7 @@ function Player:SetNoclip(value)
     end
 end
 
+-- Click teleport now glides instead of a raw CFrame jump.
 function Player:SetClickTP(value)
     self.Config.Settings.ClickTP = value == true
     if value and not self.Connections.ClickTP then
@@ -96,9 +137,17 @@ function Player:SetClickTP(value)
             if not self.Config.Settings.ClickTP then return end
             local mouse = self.Player:GetMouse()
             local target = mouse and mouse.Hit
-            local root = self.Player.Character and self.Player.Character:FindFirstChild("HumanoidRootPart")
-            if target and root then
-                root.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0))
+            if target then
+                if self.Stealth and self.Stealth.GlideTo then
+                    self.Stealth.SafeTeleport = self.Config.Settings.SafeTeleport
+                    self.Stealth.GlideSpeed = self.Config.Settings.GlideSpeed
+                    task.spawn(function()
+                        pcall(self.Stealth.GlideTo, self.Stealth, target.Position, {Height = 3})
+                    end)
+                else
+                    local root = self.Player.Character and self.Player.Character:FindFirstChild("HumanoidRootPart")
+                    if root then root.CFrame = CFrame.new(target.Position + Vector3.new(0, 3, 0)) end
+                end
             end
         end)
     elseif not value and self.Connections.ClickTP then
