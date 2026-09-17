@@ -267,10 +267,10 @@ X-ориентиры: Forest `602`, Lake `746`, Desert `785`, Jungle `936`, Snow
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/main.lua?v=0.6.3"))()
 ```
 
-### Murder Mystery 2 (v0.3.1)
+### Murder Mystery 2 (v0.4.0)
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.3.1"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.4.0"))()
 ```
 
 ## Murder Mystery 2
@@ -278,7 +278,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/Mi
 - PlaceId: `142823291`;
 - папка: `/MurderMystery2/`;
 - точка входа: `/MurderMystery2/main.lua`;
-- текущая версия: `0.3.1`;
+- текущая версия: `0.4.0`;
 - стиль GUI и CALM-доктрина — как в Steal-A-Egg v0.6.2 (тот же ui.lua/stealth.lua/anticheat.lua);
 - ресёрч: 9 открытых хабов разобраны (KittyHub, StyearX, xsync69, fogyhub, CGS Mobile,
   zzerexx Utilities, v1ain, TrixAde, IqokczHub); v0.3.0 — сверка с живыми исходниками
@@ -393,6 +393,27 @@ SafeTeleport/glide + скорость, человеческие задержки
   риски: клиентский Roblox-античит (зависит от экзекьютора) и репорты игроков.
 
 ## Журнал
+
+### 2026-09-17 — MM2 0.4.0 (через со-разработку с NEX (OpenRouter nex-n2.5-pro) + верификация сигнатур по свежим хабам)
+
+- ВЕРИФИКАЦИЯ РЕМОУТОВ ПО ЧУЖИМ ИСХОДНИКАМ (KittyHub mm2.lua 5713+/StyearX 1447/CGS Movil/fogyhub 2004/MM2fun 2059/R3TH):
+  удар = Stab Down/Up-пара + страховочная пара KnifeStabbed+HandleTouched(корень цели); бросок = KnifeThrown(from, ORIENTED to) —
+  второй CFrame несёт ПОЗУ from (CFrame.new(point)*(from-from.Position)), голая точка ломала полёт ножа; выстрел = CreateBeam RemoteFunction(1,pos,AH2/AH)
+  с ожиданием экипа до 0.35с; спид-глитч (то, что в хабах зовут Glitch) = CFrame += MoveDirection*Force*dt каждый Heartbeat, работает только в беге.
+- roles.lua v0.4.0: сброс ролей на новом раунде (KittyHub clearRoles — карта добавлена/удалена/свой респавн; до этого протухший маньяк прошлого раунда
+  врал весь следующий); пуш PlayerDataChanged форма-2 принимает Player-инстанс (раньше запись молча терялась); таблица заменяется только если несёт роли;
+  живость = Humanoid авторитетен (Killed у маньяка = «убил», не «мёртв»).
+- combat.lua v0.4.0: гейт по роли ослаблен фолбэком по тулу в руках (нож=маньяк, пистолет=шериф) — главный симптом «половина не работает»;
+  бросок с ориентированным CFrame; удары двойным каналом; KillAll-шериф экипирует пистолет перед очередью.
+- troll.lua: «Фейк-глитч» ПЕРЕПИСАН как настоящий слайд-глитч из рабочих хабов (fogyhub/CGS), вместо самодельных анкоров/спинов; +5 эмотов живого списка (sit/zombie/ninja/floss/dab).
+- GUI v0.4.0 (аудит NEX + жалоба «половина кнопок не нужна»): 7 вкладок -> 6 (Визуал влит в ИГРОКИ); удалены: дубль-тоглы SheriffAim/MurderAim,
+  слайдеры AimMaxDistance/AuraDelay/DodgeRadius/DodgeCooldown/FarmDelay/PistolSpeed/PistolReturnDelay/EspMaxDistance, FakeBomb (виден только себе),
+  RemoveRagdolls/RemoveBarriers, HumanizeDelays/GlideSpeed, mount-инфо; AutoDodge = тогл + 1 слайдер профиля (Осторожно/Баланс/Агрессивно);
+  эмоции = dropdown (11 шт) + кнопка вместо 6 кнопок; телепорты = dropdown + кнопка вместо 3 кнопок; в быстром меню добавлена ГЛИТЧ-кнопка.
+- mm2esp.lua: убран двойной InvokeServer-спам (ESP-луп дёргал Roles.Refresh каждый тик — roles.lua уже опрашивает + пуш).
+- world.lua: GunDrop чистится при удалении карты (висел мёртвым указателем).
+- config/main: 0.4.0, GlitchForce=40, DodgeProfile=2.
+
 
 ### 2026-09-17 — MM2 0.3.1 + SAE 0.6.3 (иконка репо в GUI + полный ре-аудит)
 

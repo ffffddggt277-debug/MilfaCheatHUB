@@ -15,7 +15,7 @@
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.3.1",
+    Version = "0.4.0",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
@@ -122,10 +122,13 @@ return {
         KeyFakeDeath = "K",       -- клавиша фейк-смерти по кругу (ПК)
 
         -- AutoDodge (резкий стрейф от ножей и стрелков)
+        -- профили: 1 Осторожно / 2 Баланс / 3 Агрессивно (радиус/сила/кулдаун
+        -- пересчитываются в features.lua:ApplyDodgeProfile)
         AutoDodge = false,
-        DodgeRadius = 45,         -- радиус обнаружения снарядов
-        DodgePower = 12,          -- сила рывка в сторону (стадов)
-        DodgeCooldown = 1.2,      -- пауза между уклонениями
+        DodgeProfile = 2,
+        DodgeRadius = 45,         -- радиус обнаружения снарядов (из профиля)
+        DodgePower = 12,          -- сила рывка в сторону (из профиля)
+        DodgeCooldown = 1.2,      -- пауза между уклонениями (из профиля)
 
         -- AutoPistol: ТП к выпавшему пистолету и обратно
         AutoPistolMode = "Кнопка", -- Выключено | Кнопка | Авто
@@ -146,7 +149,8 @@ return {
         WideZoom = false,          -- отдалить макс. зум (обзор карты)
 
         -- Троллинг
-        FakeGlitch = false,        -- «глючный» персонаж (видно всем)
+        FakeGlitch = false,        -- спид-глитч (глитч-бег, видно всем)
+        GlitchForce = 40,          -- сила глитч-бега (fogyhub: 45)
         Invisible = false,         -- родная невидимость игры (Stealth remote)
 
         -- Персонаж

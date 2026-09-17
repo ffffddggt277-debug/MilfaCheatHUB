@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Role detection core v0.3.1 (FIXED against live scripts).
+-- Role detection core v0.4.0 (FIXED against live scripts).
 --
 -- ПРИЧИНА КРАСНЫХ КРУГОВ v0.2.0: удалённый поиск был НЕ рекурсивным, а
 -- GetPlayerData лежит НЕ в корне ReplicatedStorage (он под Remotes/Extras —
@@ -60,8 +60,10 @@ local function findRemotes(force)
     -- если что-то не найдено — полный рекурсивный обход не чаще раза в 15с
     if not force and os.clock() - lastSearchAt < 15 then return end
     lastSearchAt = os.clock()
+    -- Ищем ТОЛЬКО если кэш умер (KittyHub): рекурсивный обход каждый рефреш
+    -- дорого стоит на телефоне.
     local newData = resolveRemote("GetPlayerData", "RemoteFunction")
-    if newData ~= dataRemote or (newData and not newData.Parent) then
+    if newData and newData ~= dataRemote then
         dataRemote = newData
     end
     local newPush = resolveRemote("PlayerDataChanged", "RemoteEvent")
@@ -87,9 +89,10 @@ end
 local function applyEntry(name, record)
     if type(name) ~= "string" or type(record) ~= "table" then return false end
     local role = normalizeRole(record.Role)
-    -- ВНИМАНИЕ (проверено по живым скриптам): Killed = «УБИЛ ли игрок кого-то»,
-    -- а НЕ «мёртв ли он». Если считать Killed смертью, маньяк исчезает с ESP
-    -- после первого убийства. Мёртвость даёт только поле Dead.
+    -- Живость: единственное надёжное поле — Dead; поле Killed в живой игре
+    -- означает «убил ли» (у маньяка становится truthy ПОСЛЕ первого убийства,
+    -- и если считать его смертью — маньяк пропадает с ESP, как было в v0.3.1).
+    -- Окончательную точку даёт Humanoid в Roles.IsAlive (персонаж авторитетен).
     Roles.Cache[name] = role
     Roles.Alive[name] = record.Dead ~= true
     if localPlayer and name == localPlayer.Name and role ~= "Unknown" then
@@ -101,7 +104,17 @@ local function applyEntry(name, record)
     return true
 end
 
+-- Политика KittyHub: заменять таблицу ТОЛЬКО если пуш реально несёт роли;
+-- частичный мусор без ролей игнорируем (иначе wiping таблицы = «мы ничего не знаем»).
 local function applyTable(payload)
+    if type(payload) ~= "table" then return end
+    local roleCount = 0
+    for _, record in pairs(payload) do
+        if type(record) == "table" and type(record.Role) == "string" and record.Role ~= "" then
+            roleCount = roleCount + 1
+        end
+    end
+    if roleCount == 0 then return end
     local seen = {}
     for name, record in pairs(payload) do
         if type(name) == "string" and type(record) == "table" then
@@ -173,7 +186,15 @@ function Roles.Get(playerName)
 end
 
 function Roles.IsAlive(playerName)
-    local value = Roles.Alive[playerName or ""]
+    local name = playerName or ""
+    -- Персонаж авторитетен и реплицируется всем: если Humanoid жив — жив.
+    local player = Players:FindFirstChild(name)
+    local character = player and player.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then return humanoid.Health > 0 end
+    end
+    local value = Roles.Alive[name]
     if value == nil then return true end
     return value and true or false
 end
@@ -235,13 +256,31 @@ function Roles.Listen()
             if type(first) == "table" then
                 applyTable(first)               -- форма 1: вся таблица
             elseif second ~= nil then
-                applyEntry(first, second)       -- форма 2: (имя|Player, запись)
-                if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
+                -- форма 2: (имя ИЛИ Player-инстанс, запись) — KittyHub приводит
+                -- Player к имени, иначе запись молча терялась
+                local name = first
+                if typeof(first) == "Instance" and first:IsA("Player") then
+                    name = first.Name
+                end
+                if applyEntry(name, second) and Roles.OnUpdate then
+                    pcall(Roles.OnUpdate, Roles.Cache)
+                end
             end
         end)
         Roles._pushConnection = connection
         connections[#connections + 1] = connection
     end
+end
+
+-- Сброс на новом раунде (KittyHub clearRoles): протухшие роли прошлого
+-- раунда хуже, чем их отсутствие. Триггеры: карта добавлена/удалена (ребёнок
+-- workspace с CoinContainer, не Lobby) и собственный респавн.
+function Roles.ResetRound()
+    Roles.Cache = {}
+    Roles.Alive = {}
+    Roles.LocalRole = nil
+    if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
+    note("round reset")
 end
 
 function Roles.Start()
@@ -250,9 +289,29 @@ function Roles.Start()
     refreshThread = task.spawn(function()
         while Roles._running ~= false do
             pcall(Roles.Refresh)
-            task.wait(2)
+            task.wait(2.5)
         end
     end)
+    if not Roles._roundBound then
+        Roles._roundBound = true
+        connections[#connections + 1] = workspace.ChildAdded:Connect(function(child)
+            if child.Name ~= "Lobby" and child:IsA("Model") and child:FindFirstChild("CoinContainer") then
+                Roles.ResetRound()
+            end
+        end)
+        connections[#connections + 1] = workspace.ChildRemoved:Connect(function(child)
+            -- FindFirstChild работает и на уже удалённом инстансе
+            if child.Name ~= "Lobby" and child:IsA("Model") and child:FindFirstChild("CoinContainer") then
+                Roles.ResetRound()
+            end
+        end)
+        connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
+            Roles.ResetRound()
+            task.delay(1.2, function()
+                if Roles._running ~= false then pcall(Roles.Refresh) end
+            end)
+        end)
+    end
 end
 
 function Roles.Shutdown()

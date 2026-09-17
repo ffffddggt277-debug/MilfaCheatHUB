@@ -38,7 +38,7 @@ local connections = {}
 local deathSound = nil
 
 -- Фейк глитч state
-local glitchThread = nil
+local glitchConnection = nil
 -- Фейк нож state
 local fakeKnifeDecals = {}
 
@@ -194,7 +194,8 @@ local EMOTE_ANIMS = {
     ["Zen"] = "rbxassetid://507771955",
 }
 
--- имена для игрового ремоута (как в EmotePages игры)
+-- имена для игрового ремоута (список живых эмотов: xsync69/fogyhub —
+-- sit, zombie, ninja, zen, floss, dab + wave/dance/cheer/laugh/point)
 local GAME_EMOTE_NAMES = {
     ["Zen"] = "zen",
     ["Махать"] = "wave",
@@ -202,6 +203,11 @@ local GAME_EMOTE_NAMES = {
     ["Радость"] = "cheer",
     ["Смех"] = "laugh",
     ["Указать"] = "point",
+    ["Сесть"] = "sit",
+    ["Зомби"] = "zombie",
+    ["Ниндзя"] = "ninja",
+    ["Флосс"] = "floss",
+    ["Дэб"] = "dab",
 }
 
 local emoteTrack = nil
@@ -414,63 +420,40 @@ function Troll.SetInvisible(value)
 end
 
 ---------------------------------------------------------------------
--- Фейк глитч: персонаж «глючит» для всех (CFrame реплицируется)
+-- Спид-глитч (то, что в популярных хабах зовут Glitch / Slide Glitch):
+-- CFrame-сдвиг по направлению бега каждый Heartbeat (fogyhub: force 45,
+-- CGS: velocity*1.48). Персонаж визуально «глится» — сдвиг реплицируется.
+-- ВАЖНО: работает ТОЛЬКО когда персонаж реально бежит (MoveDirection > 0).
 ---------------------------------------------------------------------
 
 function Troll.SetFakeGlitch(value)
     Troll.FakeGlitch = value and true or false
     ConfigRef.Settings.FakeGlitch = Troll.FakeGlitch
-    if not value then
-        -- страховка: если выключили во время «фриза в воздухе», снимаем анкор,
-        -- иначе персонаж навсегда зависает в воздухе
-        pcall(function()
-            local _, _, root = getCharacterParts()
-            if root then root.Anchored = false end
-        end)
-        return true, "фейк-глитч ВЫКЛ"
+    if glitchConnection then
+        pcall(function() glitchConnection:Disconnect() end)
+        glitchConnection = nil
     end
-    glitchThread = task.spawn(function()
-        while Troll.FakeGlitch do
-            local character, humanoid, root = getCharacterParts()
-            if humanoid and root and humanoid.Health > 0 then
-                local roll = math.random()
-                if roll < 0.55 then
-                    -- микроТП вбок (реплицируется — все видят дёрганья)
-                    local offset = Vector3.new(
-                        (math.random() - 0.5) * 4.4,
-                        math.random() < 0.25 and 1.6 or 0,
-                        (math.random() - 0.5) * 4.4)
-                    root.CFrame = root.CFrame + offset
-                elseif roll < 0.75 then
-                    -- спин
-                    root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(90, 270)), 0)
-                elseif roll < 0.9 then
-                    -- дёрганье анимаций: стоп/старт всех треков
-                    pcall(function()
-                        local animator = humanoid:FindFirstChildOfClass("Animator")
-                        if animator then
-                            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                                track:Stop(0)
-                                task.wait(0.05)
-                                track:Play(0.1)
-                            end
-                        end
-                    end)
-                else
-                    -- фриз в воздухе
-                    root.Anchored = true
-                    task.wait(0.12 + math.random() * 0.2)
-                    if root.Parent then root.Anchored = false end
-                end
+    if not value then
+        return true, "спид-глитч ВЫКЛ"
+    end
+    glitchConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not Troll.FakeGlitch then return end
+        pcall(function()
+            local character = localPlayer.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if root and humanoid and humanoid.Health > 0 and humanoid.MoveDirection.Magnitude > 0 then
+                local force = ConfigRef.Settings.GlitchForce or 40
+                local slide = Vector3.new(humanoid.MoveDirection.X, 0, humanoid.MoveDirection.Z).Unit
+                root.CFrame = root.CFrame + (slide * (force * deltaTime))
             end
-            task.wait(0.1 + math.random() * 0.2)
-        end
+        end)
     end)
-    return true, "фейк-глитч ВКЛ (все видят дёрганья)"
+    return true, "спид-глитч ВКЛ (глитч-бег, видно всем)"
 end
 
 ---------------------------------------------------------------------
--- Lifecycle
+-- Спид-глитч (см. SetFakeGlitch): отключение в Shutdown и при выгрузке
 ---------------------------------------------------------------------
 
 function Troll.Configure(config, stealth)

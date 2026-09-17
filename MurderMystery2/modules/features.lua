@@ -1,9 +1,14 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Feature wiring v0.3.0. Seven tabs (БЕТА убрана по ТЗ):
--- ИГРОКИ / АВТО / ПЕРСОНАЖ / ВИЗУАЛ / БОЙ / ТРОЛЛИНГ / СИСТЕМА.
--- Прогноз победы перенесён из беты в поле на вкладке ИГРОКИ (живой).
--- Быстрые действия собраны в ОДНУ квадратную плавающую кнопку «М»
--- (ВЫСТРЕЛ/НОЖ/ПИСТ/ФЕЙК-СМЕРТЬ/ФЕЙК НОЖ/ТП ЛОББИ) — лишние кнопки убраны.
+-- Feature wiring v0.4.0. GUI почищен (аудит NEX + разметка юзера):
+-- 6 вкладок: ИГРОКИ / БОЙ / АВТО / ПЕРСОНАЖ / ТРОЛЛИНГ / СИСТЕМА.
+-- Убрано: дубль-тоглы SheriffAim/MurderAim (кнопки делают то же),
+-- слайдеры AimMaxDistance/AuraDelay/DodgeRadius/DodgeCooldown/FarmDelay/
+-- PistolSpeed/PistolReturnDelay/EspMaxDistance (адекватные дефолты вшиты),
+-- FakeBomb (видно только себе), RemoveRagdolls/RemoveBarriers (балласт),
+-- NetworkStatus/mount-инфо, HumanizeDelays/GlideSpeed (внутренние).
+-- AutoDodge: 1 слайдер профиля (Осторожно/Баланс/Агрессивно) вместо 4.
+-- Эмоции: dropdown вместо 6 кнопок. ТП: dropdown вместо 3 кнопок.
+-- Прогноз победы остаётся живым полем в ИГРОКАХ (ТЗ юзера).
 -- Mobile: всё тапами; PC: горячие клавиши G/H/J/K.
 
 local Players = game:GetService("Players")
@@ -13,6 +18,13 @@ local localPlayer = Players.LocalPlayer
 
 local Features = {}
 Features.__index = Features
+
+-- профили AutoDodge: [радиус, сила, кулдаун]
+local DODGE_PROFILES = {
+    { Radius = 60, Power = 10, Cooldown = 2.0, Name = "Осторожно" },
+    { Radius = 45, Power = 12, Cooldown = 1.2, Name = "Баланс" },
+    { Radius = 30, Power = 16, Cooldown = 0.7, Name = "Агрессивно" },
+}
 
 function Features.new(config, ui, roles, network, world, esp, farm, combat, movement, visuals, alive, stealth, troll, beta)
     local self = setmetatable({}, Features)
@@ -42,22 +54,20 @@ function Features:Build()
     local settings = self.Config.Settings
 
     local playersTab = self.UI:CreateTab("Игроки", "ESP", colors.ESP)
+    local combatTab = self.UI:CreateTab("Бой", "HIT", colors.Combat)
     local autoTab = self.UI:CreateTab("Авто", "BOT", colors.Combat)
     local playerTab = self.UI:CreateTab("Персонаж", "PLR", colors.Player)
-    local visualTab = self.UI:CreateTab("Визуал", "VIS", colors.World)
-    local combatTab = self.UI:CreateTab("Бой", "HIT", colors.Combat)
     local trollTab = self.UI:CreateTab("Троллинг", "TRL", colors.Misc)
     local systemTab = self.UI:CreateTab("Система", "SYS", colors.Misc)
 
     -- ============================== ИГРОКИ ==============================
-    self.UI:AddHeading(playersTab, "Роли (видно до ножа)")
-    self.RoleStatus = self.UI:AddText(playersTab, "Кто есть кто", "обновляется автоматически")
+    self.UI:AddHeading(playersTab, "Кто есть кто (видно до ножа)")
+    self.RoleStatus = self.UI:AddText(playersTab, "Роли", "обновляется автоматически")
     self.ESP.OnAlert = function(message)
         pcall(function() self.RoleStatus:Set(message) end)
     end
-    -- Прогноз победы: ЖИВОЕ ПОЛЕ в основном GUI (перенесено из беты).
+    -- Прогноз победы: ЖИВОЕ ПОЛЕ в основном GUI (ТЗ юзера).
     self.PredictionStatus = self.UI:AddText(playersTab, "Кто выиграет", "считаю...")
-    self.PredictionFactors = self.UI:AddText(playersTab, "За счёт чего", "факторы появятся здесь")
     self.TimerStatus = self.UI:AddText(playersTab, "Таймер раунда", "—")
     self.UI:AddSection(playersTab, "Экран")
     self.UI:AddToggle(playersTab, "Плавающий таймер (HUD)", settings.ShowTimerHud, function(value)
@@ -69,11 +79,8 @@ function Features:Build()
         if self.QuickMenu then self.QuickMenu:SetVisible(value) end
     end)
     self.UI:AddSection(playersTab, "ESP игроков")
-    self.UI:AddToggle(playersTab, "Включить ESP игроков", settings.PlayerESP, function(value)
+    self.UI:AddToggle(playersTab, "Включить ESP", settings.PlayerESP, function(value)
         self.ESP.SetEnabled(value)
-    end)
-    self.UI:AddToggle(playersTab, "Подсветка сквозь стены (Highlight)", settings.EspHighlight, function(value)
-        settings.EspHighlight = value
     end)
     self.UI:AddToggle(playersTab, "Показывать роль", settings.EspShowRole, function(value)
         settings.EspShowRole = value
@@ -84,15 +91,13 @@ function Features:Build()
     self.UI:AddToggle(playersTab, "Только цели (скрыть мирных)", settings.EspOnlyTargets, function(value)
         settings.EspOnlyTargets = value
     end)
-    self.UI:AddSlider(playersTab, "Макс. дистанция ESP", 100, 2000, settings.EspMaxDistance, " м", function(value)
-        settings.EspMaxDistance = value
+    self.UI:AddToggle(playersTab, "Трейсеры к игрокам", settings.Tracers, function(value)
+        settings.Tracers = value
     end)
     self.UI:AddSection(playersTab, "Алерты")
-    self.UI:AddToggle(playersTab, "Алерты «МАНЬЯК рядом»", settings.MurderAlert, function(value)
+    self.UI:AddToggle(playersTab, "«МАНЬЯК рядом» + звук", settings.MurderAlert, function(value)
         settings.MurderAlert = value
-    end)
-    self.UI:AddSlider(playersTab, "Радиус алерта маньяка", 20, 200, settings.MurderAlertDistance, " м", function(value)
-        settings.MurderAlertDistance = value
+        settings.AlertBeep = value
     end)
     self.UI:AddToggle(playersTab, "Алерты о выпавшем пистолете", settings.GunDropAlert, function(value)
         settings.GunDropAlert = value
@@ -100,7 +105,8 @@ function Features:Build()
     self.UI:AddToggle(playersTab, "Подсветка GunDrop", settings.GunDropESP, function(value)
         settings.GunDropESP = value
     end)
-    self.UI:AddButton(playersTab, "Телепорт к маньяку", function()
+    self.UI:AddSection(playersTab, "Телепорт к роли")
+    self.UI:AddButton(playersTab, "К маньяку", function()
         local list = self.Roles.FindByRole("Murderer")
         if #list > 0 then
             self:GlideToPlayer(list[1])
@@ -108,13 +114,51 @@ function Features:Build()
             self.RoleStatus:Set("маньяк неизвестен — жди раунд")
         end
     end)
-    self.UI:AddButton(playersTab, "Телепорт к шерифу", function()
+    self.UI:AddButton(playersTab, "К шерифу", function()
         local list = self.Roles.FindByRole("Sheriff")
         if #list > 0 then
             self:GlideToPlayer(list[1])
         else
             self.RoleStatus:Set("шериф неизвестен — жди раунд")
         end
+    end)
+
+    -- ============================== БОЙ ==============================
+    self.UI:AddHeading(combatTab, "Оружие")
+    self.CombatStatus = self.UI:AddText(combatTab, "Состояние", "выключено")
+    self.UI:AddToggle(combatTab, "Нож-аура (ТП-стаб рядом)", settings.KnifeAura, function(value)
+        self.Combat.SetAura(value)
+    end)
+    self.UI:AddSlider(combatTab, "Радиус ауры", 8, 30, settings.AuraRadius, " м", function(value)
+        settings.AuraRadius = value
+    end)
+    self.UI:AddButton(combatTab, "KILL ALL (все в радиусе)", function()
+        local ok, message = self.Combat.KillAll()
+        if self.CombatStatus then self.CombatStatus:Set(ok and ("KILL ALL: " .. message) or ("ошибка: " .. message)) end
+    end)
+    self.UI:AddSection(combatTab, "Тихие прицелы")
+    self.UI:AddButton(combatTab, "SheriffAim: выстрел в маньяка", function()
+        local ok, message = self.Combat.SheriffAimShot()
+        if self.CombatStatus then self.CombatStatus:Set("SheriffAim: " .. tostring(message)) end
+    end)
+    self.UI:AddToggle(combatTab, "Авто-выстрел (шериф/герой)", settings.SheriffAuto, function(value)
+        self.Combat.SetSheriffAuto(value)
+    end)
+    self.UI:AddButton(combatTab, "MurderAim: бросок ножа в шерифа", function()
+        local ok, message = self.Combat.MurderAimThrow()
+        if self.CombatStatus then self.CombatStatus:Set("MurderAim: " .. tostring(message)) end
+    end)
+    self.UI:AddButton(combatTab, "Бросок в точку прицела", function()
+        local ok, message = self.Combat.ThrowAtAim()
+        if self.CombatStatus then self.CombatStatus:Set("Throw: " .. tostring(message)) end
+    end)
+    self.UI:AddSection(combatTab, "AutoDodge (уклонение)")
+    self.UI:AddToggle(combatTab, "Включить уклонение", settings.AutoDodge, function(value)
+        self:ApplyDodgeProfile(settings.DodgeProfile or 2)
+        self.Combat.SetDodge(value)
+    end)
+    self.UI:AddSlider(combatTab, "Реакция: 1 Осторожно / 2 Баланс / 3 Агрессивно", 1, 3, settings.DodgeProfile or 2, "", function(value)
+        self:ApplyDodgeProfile(value)
     end)
 
     -- ============================== АВТО ==============================
@@ -132,19 +176,11 @@ function Features:Build()
     self.UI:AddDropdown(autoTab, "Режим фарма", { "Teleport", "Smooth", "Walk" }, settings.FarmMode, function(option)
         settings.FarmMode = option
     end)
-    self.UI:AddSlider(autoTab, "Задержка фарма", 0.3, 3, settings.FarmDelay, " с", function(value)
-        settings.FarmDelay = value
-    end)
     self.UI:AddToggle(autoTab, "Стоп при полной сумке", settings.StopOnFull, function(value)
         settings.StopOnFull = value
     end)
-    self.UI:AddToggle(autoTab, "Уходить в лобби при полной сумке", settings.LobbyOnFull, function(value)
-        settings.LobbyOnFull = value
-    end)
-    self.UI:AddToggle(autoTab, "Собирать монеты и в лобби", settings.FarmLobbyCoins, function(value)
-        settings.FarmLobbyCoins = value
-    end)
-    self.UI:AddSection(autoTab, "AutoPistol: ТП к пистолету и обратно")
+    self.UI:AddSection(autoTab, "Пистолет (AutoPistol)")
+    self.PistolStatus = self.UI:AddText(autoTab, "Состояние", "режим: " .. tostring(settings.AutoPistolMode))
     self.UI:AddDropdown(autoTab, "Режим AutoPistol", { "Выключено", "Кнопка", "Авто" }, settings.AutoPistolMode, function(option)
         settings.AutoPistolMode = option
         if self.PistolStatus then
@@ -152,17 +188,11 @@ function Features:Build()
                 or (option == "Авто" and "авто-подбор включён" or "выключено"))
         end
     end)
-    self.PistolStatus = self.UI:AddText(autoTab, "Состояние", "режим: " .. tostring(settings.AutoPistolMode))
-    self.UI:AddSlider(autoTab, "Скорость ТП к пистолету", 60, 150, settings.PistolSpeed, " ст/с", function(value)
-        settings.PistolSpeed = value
-    end)
-    self.UI:AddSlider(autoTab, "Пауза перед возвратом", 0.3, 3, settings.PistolReturnDelay, " с", function(value)
-        settings.PistolReturnDelay = value
+    self.UI:AddButton(autoTab, "Подобрать пистолет сейчас", function()
+        local ok, message = self:GrabGunNow()
+        if self.PistolStatus then self.PistolStatus:Set(ok and tostring(message) or ("ошибка: " .. tostring(message))) end
     end)
     self.UI:AddSection(autoTab, "Прочее")
-    self.UI:AddToggle(autoTab, "Подсветка монет (Coin ESP)", settings.CoinESP, function(value)
-        self.ESP.SetCoins(value)
-    end)
     self.UI:AddToggle(autoTab, "Anti-AFK", settings.AntiAFK, function(value)
         self.Movement.SetAntiAFK(value)
     end)
@@ -172,10 +202,6 @@ function Features:Build()
     self.UI:AddSlider(playerTab, "Скорость (безопасно до 50)", 16, 50, settings.WalkSpeed, "", function(value)
         settings.WalkSpeed = value
         self.Movement.ApplySpeed(value)
-    end)
-    self.UI:AddButton(playerTab, "Сбросить скорость", function()
-        settings.WalkSpeed = 16
-        self.Movement.ApplySpeed(16)
     end)
     self.UI:AddSlider(playerTab, "Прыжок", 50, 120, settings.JumpPower, "", function(value)
         settings.JumpPower = value
@@ -194,222 +220,81 @@ function Features:Build()
         self.Movement.SetClickTP(value)
     end)
     self.UI:AddSection(playerTab, "Телепорты")
-    self.UI:AddButton(playerTab, "В лобби", function()
-        self.Movement.ToLobby()
+    self.UI:AddDropdown(playerTab, "Точка", { "Лобби", "Карта (спавн)", "Над картой (обзор)" }, "Лобби", function(option)
+        self.TpChoice = option
     end)
-    self.UI:AddButton(playerTab, "На карту (спавн)", function()
-        if not self.Movement.ToMap() and self.FarmStatus then
-            self.FarmStatus:Set("карта не найдена — подойди к карте")
+    self.UI:AddButton(playerTab, "Телепортироваться", function()
+        if self.TpChoice == "Карта (спавн)" then
+            if not self.Movement.ToMap() and self.FarmStatus then
+                self.FarmStatus:Set("карта не найдена — подойди к карте")
+            end
+        elseif self.TpChoice == "Над картой (обзор)" then
+            self.Movement.AboveMap()
+        else
+            self.Movement.ToLobby()
         end
-    end)
-    self.UI:AddButton(playerTab, "Над картой (обзор)", function()
-        self.Movement.AboveMap()
-    end)
-
-    -- ============================== ВИЗУАЛ ==============================
-    self.UI:AddHeading(visualTab, "Клиентский визуал")
-    self.UI:AddToggle(visualTab, "Fullbright (максимальная яркость)", settings.Fullbright, function(value)
-        settings.Fullbright = value
-        self.Visuals.SetFullbright(value)
-    end)
-    self.UI:AddToggle(visualTab, "Убрать туман", settings.NoFog, function(value)
-        settings.NoFog = value
-        self.Visuals.SetNoFog(value)
-    end)
-    self.UI:AddToggle(visualTab, "Убирать трупы (Raggy)", settings.RemoveRagdolls, function(value)
-        self.Visuals.SetRemoveRagdolls(value)
-    end)
-    self.UI:AddToggle(visualTab, "Убирать барьеры карты (GlitchProof)", settings.RemoveBarriers, function(value)
-        self.Visuals.SetRemoveBarriers(value)
-    end)
-    self.FpsStatus = self.UI:AddText(visualTab, "Производительность", "Обычный режим")
-    self.UI:AddToggle(visualTab, "Лёгкий FPS-режим (для телефона)", false, function(value)
-        self.Visuals.SetFpsMode(value)
-        self.FpsStatus:Set(value and "Тени/эффекты выключены" or "Настройки восстановлены")
-    end)
-    self.UI:AddSection(visualTab, "Экран")
-    self.UI:AddToggle(visualTab, "Трейсеры к игрокам (Beam)", settings.Tracers, function(value)
-        settings.Tracers = value
-    end)
-    self.UI:AddToggle(visualTab, "Звук «маньяк рядом» (пинг)", settings.AlertBeep, function(value)
-        settings.AlertBeep = value
-    end)
-    self.UI:AddSlider(visualTab, "Поле зрения (FOV)", 60, 120, settings.FOV or 70, "°", function(value)
-        settings.FOV = value
-        pcall(function()
-            local camera = workspace.CurrentCamera
-            if camera then camera.FieldOfView = value end
-        end)
-    end)
-    self.UI:AddToggle(visualTab, "Дальний зум (обзор карты)", settings.WideZoom, function(value)
-        settings.WideZoom = value
-        pcall(function()
-            localPlayer.CameraMaxZoomDistance = value and 400 or 128
-        end)
-    end)
-
-    -- ============================== БОЙ ==============================
-    self.UI:AddHeading(combatTab, "Оружие (только у своей роли)")
-    self.CombatStatus = self.UI:AddText(combatTab, "Состояние", "выключено")
-    self.UI:AddSection(combatTab, "Нож-аура (ТП-стаб)")
-    self.UI:AddToggle(combatTab, "Нож-аура (автоудар рядом)", settings.KnifeAura, function(value)
-        self.Combat.SetAura(value)
-    end)
-    self.UI:AddSlider(combatTab, "Радиус ауры", 8, 30, settings.AuraRadius, " м", function(value)
-        settings.AuraRadius = value
-    end)
-    self.UI:AddSlider(combatTab, "Пауза между ударами", 0.5, 3, settings.AuraDelay, " с", function(value)
-        settings.AuraDelay = value
-    end)
-    self.UI:AddButton(combatTab, "KILL ALL (все в радиусе)", function()
-        local ok, message = self.Combat.KillAll()
-        if self.CombatStatus then self.CombatStatus:Set(ok and ("KILL ALL: " .. message) or ("ошибка: " .. message)) end
-    end)
-    self.UI:AddSection(combatTab, "Тихий аим")
-    self.UI:AddToggle(combatTab, "SheriffAim: выстрел в маньяка (LOS)", settings.SheriffAimButton, function(value)
-        settings.SheriffAimButton = value
-    end)
-    self.UI:AddButton(combatTab, "SheriffAim: выстрелить сейчас", function()
-        local ok, message = self.Combat.SheriffAimShot()
-        if self.CombatStatus then self.CombatStatus:Set("SheriffAim: " .. tostring(message)) end
-    end)
-    self.UI:AddToggle(combatTab, "MurderAim: бросок ножа в шерифа (LOS)", settings.MurderAimButton, function(value)
-        settings.MurderAimButton = value
-    end)
-    self.UI:AddButton(combatTab, "MurderAim: бросить нож сейчас", function()
-        local ok, message = self.Combat.MurderAimThrow()
-        if self.CombatStatus then self.CombatStatus:Set("MurderAim: " .. tostring(message)) end
-    end)
-    self.UI:AddButton(combatTab, "Бросок ножа в точку прицела", function()
-        local ok, message = self.Combat.ThrowAtAim()
-        if self.CombatStatus then self.CombatStatus:Set("Throw: " .. tostring(message)) end
-    end)
-    self.UI:AddSlider(combatTab, "Макс. дистанция тихих прицелов", 50, 500, settings.AimMaxDistance, " м", function(value)
-        settings.AimMaxDistance = value
-    end)
-    self.UI:AddSection(combatTab, "AutoDodge (уклонение)")
-    self.UI:AddToggle(combatTab, "AutoDodge: стрейф от ножей и стрелков", settings.AutoDodge, function(value)
-        self.Combat.SetDodge(value)
-    end)
-    self.UI:AddSlider(combatTab, "Радиус угрозы", 15, 80, settings.DodgeRadius, " м", function(value)
-        settings.DodgeRadius = value
-    end)
-    self.UI:AddSlider(combatTab, "Сила рывка", 6, 20, settings.DodgePower, " м", function(value)
-        settings.DodgePower = value
-    end)
-    self.UI:AddSlider(combatTab, "Пауза между уклонениями", 0.6, 3, settings.DodgeCooldown, " с", function(value)
-        settings.DodgeCooldown = value
-    end)
-    self.UI:AddSection(combatTab, "Шериф")
-    self.UI:AddToggle(combatTab, "Авто-выстрел в маньяка (шериф/герой)", settings.SheriffAuto, function(value)
-        self.Combat.SetSheriffAuto(value)
-    end)
-    self.UI:AddSlider(combatTab, "Дистанция выстрела", 50, 500, settings.SheriffRange, " м", function(value)
-        settings.SheriffRange = value
     end)
 
     -- ============================== ТРОЛЛИНГ ==============================
-    self.UI:AddHeading(trollTab, "Фейк предметы (как в популярных скриптах)")
+    self.UI:AddHeading(trollTab, "Фейк предметы (видно всем)")
     self.TrollStatus = self.UI:AddText(trollTab, "Активно", "ничего")
-    self.UI:AddButton(trollTab, "Фейк НОЖ на руке (видно всем)", function()
+    self.UI:AddButton(trollTab, "Фейк НОЖ на руке", function()
         local ok, message = self.Troll.FakeKnife()
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
     end)
-    self.UI:AddButton(trollTab, "Фейк-пистолет (видно всем)", function()
+    self.UI:AddButton(trollTab, "Фейк-пистолет", function()
         local ok, message = self.Troll.FakeGun()
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
     end)
-    self.UI:AddButton(trollTab, "Фейк-бомба у ног (твой экран)", function()
-        local ok, message = self.Troll.FakeBomb()
+    self.UI:AddButton(trollTab, "Фейк-смерть (по кругу: рагдолл/призрак/выкл)", function()
+        local message = self.Troll.CycleFakeDeath()
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
     end)
-    self.UI:AddSection(trollTab, "Фейк глитч и невидимка")
-    self.UI:AddToggle(trollTab, "Фейк ГЛИТЧ (все видят дёрганья)", settings.FakeGlitch, function(value)
+    self.UI:AddSection(trollTab, "Спид-глитч (глитч-бег как в популярных хабах)")
+    self.UI:AddToggle(trollTab, "Спид-глитч", settings.FakeGlitch, function(value)
         local ok, message = self.Troll.SetFakeGlitch(value)
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
     end)
+    self.UI:AddSlider(trollTab, "Сила глитча", 20, 60, settings.GlitchForce or 40, "", function(value)
+        settings.GlitchForce = value
+    end)
+    self.UI:AddSection(trollTab, "Эмоции (ремоут игры — видно всем)")
+    self.UI:AddDropdown(trollTab, "Эмоция", { "Zen", "Махать", "Танец", "Радость", "Смех", "Указать", "Сесть", "Зомби", "Ниндзя", "Флосс", "Дэб" }, "Zen", function(option)
+        self.EmoteChoice = option
+    end)
+    self.UI:AddButton(trollTab, "Воспроизвести эмоцию", function()
+        local ok, message = self.Troll.PlayEmote(self.EmoteChoice or "Zen")
+        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
+    end)
+    self.UI:AddSection(trollTab, "Прочее")
     self.UI:AddToggle(trollTab, "Невидимка (родная стелс игры)", settings.Invisible, function(value)
         local ok, message = self.Troll.SetInvisible(value)
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
     end)
-    self.UI:AddSection(trollTab, "Фейк смерть (2 типа)")
-    self.UI:AddButton(trollTab, "Тип 1: РАГДОЛЛ (лечь + oof)", function()
-        self.Troll.SetFakeDeath("Рагдолл")
-        if self.TrollStatus then self.TrollStatus:Set("фейк-смерть: РАГДОЛЛ") end
-    end)
-    self.UI:AddButton(trollTab, "Тип 2: ПРИЗРАК (невидимка локально)", function()
-        self.Troll.SetFakeDeath("Призрак")
-        if self.TrollStatus then self.TrollStatus:Set("фейк-смерть: ПРИЗРАК") end
-    end)
-    self.UI:AddButton(trollTab, "Выключить фейк-смерть", function()
-        self.Troll.SetFakeDeath(nil)
-        if self.TrollStatus then self.TrollStatus:Set("выключено") end
-    end)
-    self.UI:AddSection(trollTab, "Эмоции (ремоут игры — видно всем)")
-    self.UI:AddButton(trollTab, "Zen (медитация)", function()
-        local ok, message = self.Troll.PlayEmote("Zen")
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-    self.UI:AddButton(trollTab, "Махать", function()
-        local ok, message = self.Troll.PlayEmote("Махать")
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-    self.UI:AddButton(trollTab, "Танец", function()
-        local ok, message = self.Troll.PlayEmote("Танец")
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-    self.UI:AddButton(trollTab, "Радость", function()
-        local ok, message = self.Troll.PlayEmote("Радость")
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-    self.UI:AddButton(trollTab, "Смех", function()
-        local ok, message = self.Troll.PlayEmote("Смех")
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-    self.UI:AddButton(trollTab, "Сесть", function()
-        local ok, message = self.Troll.PlayEmote("Сесть")
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
 
     -- ============================== СИСТЕМА ==============================
-    self.UI:AddHeading(systemTab, "СТЕЛС CALM (v" .. self.Config.Version .. ")")
-    local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
-    self.StealthStatus = self.UI:AddText(systemTab, "Маунт GUI: " .. mountKind,
-        "Скрытый маунт (gethui/CoreGui) — невидим игровым сканерам")
-    self.UI:AddToggle(systemTab, "Безопасные телепорты (glide)", settings.SafeTeleport, function(value)
-        settings.SafeTeleport = value
-        if self.Stealth then self.Stealth.SafeTeleport = value end
-    end)
-    self.UI:AddSlider(systemTab, "Скорость glide", 20, 100, settings.GlideSpeed, " ст/с", function(value)
-        settings.GlideSpeed = value
-        if self.Stealth then self.Stealth.GlideSpeed = value end
-    end)
-    self.UI:AddToggle(systemTab, "Человеческие задержки", settings.HumanizeDelays, function(value)
-        settings.HumanizeDelays = value
-    end)
-    self.NetworkStatus = self.UI:AddText(systemTab, "Ремоуты", self.Network:Summary())
+    self.UI:AddHeading(systemTab, "Система")
     self.UI:AddButton(systemTab, "Диагностика в консоль (F9)", function()
         local registry = self.Stealth and self.Stealth.Registry
         if registry and registry.Diag then
             registry.Diag()
-            self.StealthStatus:Set("Диагностика выведена в консоль F9")
+            if self.StealthStatus then self.StealthStatus:Set("Диагностика выведена в консоль F9") end
         end
     end)
-    self.UI:AddSection(systemTab, "Горячие клавиши (ПК)")
-    self.UI:AddText(systemTab, "Раскладка",
+    self.StealthStatus = self.UI:AddText(systemTab, "Статус", "ремоуты: " .. tostring(self.Network:Summary()))
+    self.UI:AddText(systemTab, "Горячие клавиши (ПК)",
         (settings.KeySheriffAim or "G") .. " — SheriffAim • " ..
         (settings.KeyMurderAim or "H") .. " — MurderAim • " ..
-        (settings.KeyGrabGun or "J") .. " — ТП к пистолету • " ..
-        (settings.KeyFakeDeath or "K") .. " — фейк-смерть по кругу • " ..
-        "RightControl — скрыть/показать окно")
-    self.UI:AddSection(systemTab, "Сессия")
+        (settings.KeyGrabGun or "J") .. " — пистолет • " ..
+        (settings.KeyFakeDeath or "K") .. " — фейк-смерть • " ..
+        "RightControl — скрыть/показать")
     self.UI:AddButton(systemTab, "Реджойн в эту же игру", function()
         pcall(function()
             TeleportService:Teleport(self.Config.PlaceId, localPlayer)
         end)
     end)
 
-    -- ============================== КВАДРАТНАЯ БЫСТРАЯ КНОПКА ==============================
+    -- ============================== ПЛАВАЮЩИЕ ЭЛЕМЕНТЫ ==============================
     self.Hud = self.UI:AddFloatingHud()
     self.Hud:SetVisible(settings.ShowTimerHud ~= false)
 
@@ -434,8 +319,9 @@ function Features:Build()
             local ok, message = self.Troll.FakeKnife()
             if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
         end },
-        { Text = "ТП ЛОББИ", Color = colors.ESP, Callback = function()
-            self.Movement.ToLobby()
+        { Text = "ГЛИТЧ", Color = colors.World, Callback = function()
+            local ok, message = self.Troll.SetFakeGlitch(not self.Troll.FakeGlitch)
+            if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
         end },
     })
     pcall(function() self.QuickMenu:SetVisible(settings.ShowQuickMenu ~= false) end)
@@ -445,13 +331,23 @@ end
 -- Helpers
 ---------------------------------------------------------------------
 
+-- Профиль AutoDodge: пересчитывает радиус/силу/кулдаун в settings.
+function Features:ApplyDodgeProfile(index)
+    local settings = self.Config.Settings
+    local profile = DODGE_PROFILES[math.clamp(math.floor(index or 2), 1, #DODGE_PROFILES)]
+    settings.DodgeProfile = index
+    settings.DodgeRadius = profile.Radius
+    settings.DodgePower = profile.Power
+    settings.DodgeCooldown = profile.Cooldown
+end
+
 function Features:UpdateRoleStatus()
     local murderer = self.Roles.FindByRole("Murderer")
     local sheriff = self.Roles.FindByRole("Sheriff")
     local hero = self.Roles.FindByRole("Hero")
     local parts = {}
-    parts[#parts + 1] = "маньяк: " .. (#murderer > 0 and table.concat(murderer, ", ") or "неизвестен")
-    parts[#parts + 1] = "шериф: " .. (#sheriff > 0 and table.concat(sheriff, ", ") or "неизвестен")
+    parts[#parts + 1] = "маньяк: " .. (#murderer > 0 and table.concat(murderer, ", ") or "?")
+    parts[#parts + 1] = "шериф: " .. (#sheriff > 0 and table.concat(sheriff, ", ") or "?")
     if #hero > 0 then parts[#parts + 1] = "герой: " .. table.concat(hero, ", ") end
     if self.RoleStatus then
         self.RoleStatus:Set(table.concat(parts, " • "))
@@ -513,6 +409,7 @@ function Features:Start()
     if self.Running then return end
     self.Running = true
     self.World.Start()
+    self:ApplyDodgeProfile(self.Config.Settings.DodgeProfile or 2)
 
     self.Connections[#self.Connections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
         if processed then return end
@@ -579,17 +476,6 @@ function Features:Start()
                 pcall(function()
                     local result = self.Beta.Compute()
                     if self.PredictionStatus then self.PredictionStatus:Set(result.Text) end
-                    if self.PredictionFactors then
-                        local factorText = "факторы неизвестны"
-                        if #result.Factors > 0 then
-                            local visible = {}
-                            for index = 1, math.min(3, #result.Factors) do
-                                visible[index] = result.Factors[index]
-                            end
-                            factorText = table.concat(visible, " • ")
-                        end
-                        self.PredictionFactors:Set(factorText)
-                    end
                 end)
             end
 

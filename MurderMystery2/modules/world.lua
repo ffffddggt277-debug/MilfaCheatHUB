@@ -253,7 +253,10 @@ function World.Start()
             World.CurrentMap = nil
             note("map removed")
         end
-        if child == World.GunDrop then World.GunDrop = nil end
+        -- GunDrop живёт внутри карты: карта удалена — пистолет тоже мёртв
+        if child == World.GunDrop or (World.GunDrop and not World.GunDrop.Parent) then
+            World.GunDrop = nil
+        end
     end)
 
     task.spawn(function()

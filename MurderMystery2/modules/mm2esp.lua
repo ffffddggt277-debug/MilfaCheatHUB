@@ -358,7 +358,8 @@ local function loop()
     while running do
         local ok, err = pcall(function()
             local settings = ConfigRef.Settings
-            pcall(function() RolesRef.Refresh() end)
+            -- Роли опрашивает свой цикл roles.lua (2.5с) + пуш PlayerDataChanged.
+            -- Второй InvokeServer здесь каждый тик = двойной спам на телефон.
             if settings.PlayerESP then
                 for _, player in ipairs(Players:GetPlayers()) do
                     if player ~= Players.LocalPlayer then
