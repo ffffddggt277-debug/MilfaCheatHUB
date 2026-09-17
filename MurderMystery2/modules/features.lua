@@ -1,7 +1,10 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Feature wiring v0.2.0. Eight tabs:
--- ИГРОКИ / АВТО / ПЕРСОНАЖ / ВИЗУАЛ / БОЙ / ТРОЛЛИНГ / БЕТА / СИСТЕМА.
--- Mobile: floating action buttons; PC: hotkeys (G/H/J/K).
+-- Feature wiring v0.3.0. Seven tabs (БЕТА убрана по ТЗ):
+-- ИГРОКИ / АВТО / ПЕРСОНАЖ / ВИЗУАЛ / БОЙ / ТРОЛЛИНГ / СИСТЕМА.
+-- Прогноз победы перенесён из беты в поле на вкладке ИГРОКИ (живой).
+-- Быстрые действия собраны в ОДНУ квадратную плавающую кнопку «М»
+-- (ВЫСТРЕЛ/НОЖ/ПИСТ/ФЕЙК-СМЕРТЬ/ФЕЙК НОЖ/ТП ЛОББИ) — лишние кнопки убраны.
+-- Mobile: всё тапами; PC: горячие клавиши G/H/J/K.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -44,29 +47,26 @@ function Features:Build()
     local visualTab = self.UI:CreateTab("Визуал", "VIS", colors.World)
     local combatTab = self.UI:CreateTab("Бой", "HIT", colors.Combat)
     local trollTab = self.UI:CreateTab("Троллинг", "TRL", colors.Misc)
-    local betaTab = self.UI:CreateTab("Бета", "BETA", colors.ESP)
     local systemTab = self.UI:CreateTab("Система", "SYS", colors.Misc)
 
     -- ============================== ИГРОКИ ==============================
     self.UI:AddHeading(playersTab, "Роли (видно до ножа)")
-    self.RoleStatus = self.UI:AddText(playersTab, "Кто есть кто", "Первый опрос — после открытия GUI")
-    -- ESP alerts (murderer nearby / gun dropped) surface on the status card.
+    self.RoleStatus = self.UI:AddText(playersTab, "Кто есть кто", "обновляется автоматически")
     self.ESP.OnAlert = function(message)
         pcall(function() self.RoleStatus:Set(message) end)
     end
-    self.UI:AddButton(playersTab, "Обновить роли сейчас", function()
-        pcall(function() self.Roles.Refresh() end)
-        self:UpdateRoleStatus()
-    end)
+    -- Прогноз победы: ЖИВОЕ ПОЛЕ в основном GUI (перенесено из беты).
+    self.PredictionStatus = self.UI:AddText(playersTab, "Кто выиграет", "считаю...")
+    self.PredictionFactors = self.UI:AddText(playersTab, "За счёт чего", "факторы появятся здесь")
     self.TimerStatus = self.UI:AddText(playersTab, "Таймер раунда", "—")
     self.UI:AddSection(playersTab, "Экран")
     self.UI:AddToggle(playersTab, "Плавающий таймер (HUD)", settings.ShowTimerHud, function(value)
         settings.ShowTimerHud = value
         if self.Hud then self.Hud:SetVisible(value) end
     end)
-    self.UI:AddToggle(playersTab, "Плавающие кнопки (телефон)", settings.ShowFloatingButtons, function(value)
-        settings.ShowFloatingButtons = value
-        pcall(function() self.UI:SetFloatingHostVisible(value) end)
+    self.UI:AddToggle(playersTab, "Квадратная быстрая кнопка", settings.ShowQuickMenu, function(value)
+        settings.ShowQuickMenu = value
+        if self.QuickMenu then self.QuickMenu:SetVisible(value) end
     end)
     self.UI:AddSection(playersTab, "ESP игроков")
     self.UI:AddToggle(playersTab, "Включить ESP игроков", settings.PlayerESP, function(value)
@@ -87,9 +87,6 @@ function Features:Build()
     self.UI:AddSlider(playersTab, "Макс. дистанция ESP", 100, 2000, settings.EspMaxDistance, " м", function(value)
         settings.EspMaxDistance = value
     end)
-    self.UI:AddSlider(playersTab, "Частота обновления", 0.5, 3, settings.RefreshSeconds, " с", function(value)
-        settings.RefreshSeconds = value
-    end)
     self.UI:AddSection(playersTab, "Алерты")
     self.UI:AddToggle(playersTab, "Алерты «МАНЬЯК рядом»", settings.MurderAlert, function(value)
         settings.MurderAlert = value
@@ -108,7 +105,7 @@ function Features:Build()
         if #list > 0 then
             self:GlideToPlayer(list[1])
         else
-            self.RoleStatus:Set("маньяк неизвестен — обнови роли")
+            self.RoleStatus:Set("маньяк неизвестен — жди раунд")
         end
     end)
     self.UI:AddButton(playersTab, "Телепорт к шерифу", function()
@@ -116,7 +113,7 @@ function Features:Build()
         if #list > 0 then
             self:GlideToPlayer(list[1])
         else
-            self.RoleStatus:Set("шериф неизвестен — обнови роли")
+            self.RoleStatus:Set("шериф неизвестен — жди раунд")
         end
     end)
 
@@ -147,15 +144,11 @@ function Features:Build()
     self.UI:AddToggle(autoTab, "Собирать монеты и в лобби", settings.FarmLobbyCoins, function(value)
         settings.FarmLobbyCoins = value
     end)
-    self.UI:AddButton(autoTab, "Сбросить счётчик собранных", function()
-        self.Farm.CoinsCollected = 0
-    end)
-    self.UI:AddSection(autoTab, "Помощники раунда")
-    self.UI:AddHeading(autoTab, "AutoPistol: ТП к пистолету и обратно")
+    self.UI:AddSection(autoTab, "AutoPistol: ТП к пистолету и обратно")
     self.UI:AddDropdown(autoTab, "Режим AutoPistol", { "Выключено", "Кнопка", "Авто" }, settings.AutoPistolMode, function(option)
         settings.AutoPistolMode = option
         if self.PistolStatus then
-            self.PistolStatus:Set(option == "Кнопка" and "кнопка появится, когда пистолет выпадет"
+            self.PistolStatus:Set(option == "Кнопка" and "кнопка в быстром меню и на клавише J"
                 or (option == "Авто" and "авто-подбор включён" or "выключено"))
         end
     end)
@@ -166,13 +159,6 @@ function Features:Build()
     self.UI:AddSlider(autoTab, "Пауза перед возвратом", 0.3, 3, settings.PistolReturnDelay, " с", function(value)
         settings.PistolReturnDelay = value
     end)
-    self.UI:AddButton(autoTab, "ТП к пистолету и обратно (сейчас)", function()
-        local ok, message = self:GrabGunNow()
-        if self.PistolStatus then
-            self.PistolStatus:Set(ok and tostring(message) or ("ошибка: " .. tostring(message)))
-        end
-    end)
-    self.UI:AddText(autoTab, "Как работает", "Кнопка/Авто: глайд к выпавшему GunDrop, подбор, возврат на место. Маньяк поднять не может (сервер). Клавиша ПК: J")
     self.UI:AddSection(autoTab, "Прочее")
     self.UI:AddToggle(autoTab, "Подсветка монет (Coin ESP)", settings.CoinESP, function(value)
         self.ESP.SetCoins(value)
@@ -264,9 +250,8 @@ function Features:Build()
 
     -- ============================== БОЙ ==============================
     self.UI:AddHeading(combatTab, "Оружие (только у своей роли)")
-    self.UI:AddText(combatTab, "Внимание", "Функции боя используют родные ремоуты игры. Максимальный риск репортов от игроков — включай осознанно.")
     self.CombatStatus = self.UI:AddText(combatTab, "Состояние", "выключено")
-    self.UI:AddSection(combatTab, "Нож-аура")
+    self.UI:AddSection(combatTab, "Нож-аура (ТП-стаб)")
     self.UI:AddToggle(combatTab, "Нож-аура (автоудар рядом)", settings.KnifeAura, function(value)
         self.Combat.SetAura(value)
     end)
@@ -276,21 +261,19 @@ function Features:Build()
     self.UI:AddSlider(combatTab, "Пауза между ударами", 0.5, 3, settings.AuraDelay, " с", function(value)
         settings.AuraDelay = value
     end)
-    self.UI:AddButton(combatTab, "KILL ALL (все в радиусе 60)", function()
+    self.UI:AddButton(combatTab, "KILL ALL (все в радиусе)", function()
         local ok, message = self.Combat.KillAll()
         if self.CombatStatus then self.CombatStatus:Set(ok and ("KILL ALL: " .. message) or ("ошибка: " .. message)) end
     end)
-    self.UI:AddSection(combatTab, "Тихий аим (кнопка/клавиша, без циклов)")
-    self.UI:AddText(combatTab, "SheriffAim", "Кнопка «ВЫСТРЕЛ» на экране (или клавиша G): тихий выстрел в маньяка — ТОЛЬКО если между вами нет препятствий (рейкаст). Кнопка видна когда ты шериф/герой.")
-    self.UI:AddToggle(combatTab, "SheriffAim: показывать кнопку", settings.SheriffAimButton, function(value)
+    self.UI:AddSection(combatTab, "Тихий аим")
+    self.UI:AddToggle(combatTab, "SheriffAim: выстрел в маньяка (LOS)", settings.SheriffAimButton, function(value)
         settings.SheriffAimButton = value
     end)
     self.UI:AddButton(combatTab, "SheriffAim: выстрелить сейчас", function()
         local ok, message = self.Combat.SheriffAimShot()
         if self.CombatStatus then self.CombatStatus:Set("SheriffAim: " .. tostring(message)) end
     end)
-    self.UI:AddText(combatTab, "MurderAim", "Кнопка «НОЖ» на экране (или клавиша H): тихий бросок ножа в шерифа — если между вами нет препятствий. Кнопка видна когда ты маньяк.")
-    self.UI:AddToggle(combatTab, "MurderAim: показывать кнопку", settings.MurderAimButton, function(value)
+    self.UI:AddToggle(combatTab, "MurderAim: бросок ножа в шерифа (LOS)", settings.MurderAimButton, function(value)
         settings.MurderAimButton = value
     end)
     self.UI:AddButton(combatTab, "MurderAim: бросить нож сейчас", function()
@@ -317,7 +300,6 @@ function Features:Build()
     self.UI:AddSlider(combatTab, "Пауза между уклонениями", 0.6, 3, settings.DodgeCooldown, " с", function(value)
         settings.DodgeCooldown = value
     end)
-    self.UI:AddText(combatTab, "Как работает", "Ловим летящие в тебя ножи и резко уводим вбок. Пуля — хитскан, поэтому от стрелков/маньяка в упор уклоняемся ЗАРАНЕЕ, когда целятся. Кулдаун настраивается.")
     self.UI:AddSection(combatTab, "Шериф")
     self.UI:AddToggle(combatTab, "Авто-выстрел в маньяка (шериф/герой)", settings.SheriffAuto, function(value)
         self.Combat.SetSheriffAuto(value)
@@ -327,23 +309,43 @@ function Features:Build()
     end)
 
     -- ============================== ТРОЛЛИНГ ==============================
-    self.UI:AddHeading(trollTab, "Фейк смерть (2 типа)")
-    self.UI:AddText(trollTab, "Как работает", "Смерть в MM2 подтверждает сервер — фейк полностью обмануть игру не может. Оба типа — вид на ТВОЁМ экране: для скринов, прикола и наблюдения.")
+    self.UI:AddHeading(trollTab, "Фейк предметы (как в популярных скриптах)")
     self.TrollStatus = self.UI:AddText(trollTab, "Активно", "ничего")
+    self.UI:AddButton(trollTab, "Фейк НОЖ на руке (видно всем)", function()
+        local ok, message = self.Troll.FakeKnife()
+        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
+    end)
+    self.UI:AddButton(trollTab, "Фейк-пистолет (видно всем)", function()
+        local ok, message = self.Troll.FakeGun()
+        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
+    end)
+    self.UI:AddButton(trollTab, "Фейк-бомба у ног (твой экран)", function()
+        local ok, message = self.Troll.FakeBomb()
+        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
+    end)
+    self.UI:AddSection(trollTab, "Фейк глитч и невидимка")
+    self.UI:AddToggle(trollTab, "Фейк ГЛИТЧ (все видят дёрганья)", settings.FakeGlitch, function(value)
+        local ok, message = self.Troll.SetFakeGlitch(value)
+        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
+    end)
+    self.UI:AddToggle(trollTab, "Невидимка (родная стелс игры)", settings.Invisible, function(value)
+        local ok, message = self.Troll.SetInvisible(value)
+        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
+    end)
+    self.UI:AddSection(trollTab, "Фейк смерть (2 типа)")
     self.UI:AddButton(trollTab, "Тип 1: РАГДОЛЛ (лечь + oof)", function()
         self.Troll.SetFakeDeath("Рагдолл")
-        if self.TrollStatus then self.TrollStatus:Set("фейк-смерть: РАГДОЛЛ (повторное нажатие — включить другой тип)") end
+        if self.TrollStatus then self.TrollStatus:Set("фейк-смерть: РАГДОЛЛ") end
     end)
-    self.UI:AddButton(trollTab, "Тип 2: ПРИЗРАК (невидимка)", function()
+    self.UI:AddButton(trollTab, "Тип 2: ПРИЗРАК (невидимка локально)", function()
         self.Troll.SetFakeDeath("Призрак")
-        if self.TrollStatus then self.TrollStatus:Set("фейк-смерть: ПРИЗРАК — ходи и смотри, кто кто") end
+        if self.TrollStatus then self.TrollStatus:Set("фейк-смерть: ПРИЗРАК") end
     end)
     self.UI:AddButton(trollTab, "Выключить фейк-смерть", function()
         self.Troll.SetFakeDeath(nil)
         if self.TrollStatus then self.TrollStatus:Set("выключено") end
     end)
-    self.UI:AddText(trollTab, "Подсказка (ПК)", "Клавиша K переключает по кругу: выкл → рагдолл → призрак → выкл")
-    self.UI:AddSection(trollTab, "Эмоции и анимации")
+    self.UI:AddSection(trollTab, "Эмоции (ремоут игры — видно всем)")
     self.UI:AddButton(trollTab, "Zen (медитация)", function()
         local ok, message = self.Troll.PlayEmote("Zen")
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
@@ -368,41 +370,12 @@ function Features:Build()
         local ok, message = self.Troll.PlayEmote("Сесть")
         if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
     end)
-    self.UI:AddText(trollTab, "Как работают эмоции", "Родной ремоут игры PlayEmote — видно всем. Если ремоут недоступен, проигрывается локальная анимация (видно только тебе).")
-    self.UI:AddSection(trollTab, "Игровые троллинг-предметы")
-    self.UI:AddButton(trollTab, "Фейк-пистолет (показать)", function()
-        local ok, message = self.Troll.FakeGun()
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-    self.UI:AddButton(trollTab, "Фейк-бомба (игрушка)", function()
-        local ok, message = self.Troll.FakeBomb()
-        if self.TrollStatus then self.TrollStatus:Set(tostring(message)) end
-    end)
-
-    -- ============================== БЕТА ==============================
-    self.UI:AddHeading(betaTab, "Прогноз победы (БЕТА)")
-    self.PredictionStatus = self.UI:AddText(betaTab, "Прогноз", "считаю при первом открытии...")
-    self.UI:AddButton(betaTab, "Пересчитать сейчас", function()
-        pcall(function()
-            local result = self.Beta.Compute()
-            if self.PredictionStatus then
-                self.PredictionStatus:Set(result.Ready and result.Text or result.Text)
-            end
-        end)
-    end)
-    self.UI:AddSlider(betaTab, "Период пересчёта", 2, 10, settings.PredictionRefresh, " с", function(value)
-        settings.PredictionRefresh = value
-    end)
-    self.PredictionFactors = self.UI:AddText(betaTab, "Почему такой прогноз", "факторы появятся здесь")
-    self.UI:AddText(betaTab, "Как это работает (честно)", "Это эвристика, а не магия: жив ли шериф/герой, дистанция маньяк-шериф (далеко = шериф может спокойно стрелять; вплотную = нож быстрее), число живых мирных (запас времени), давление маньяка на мирных и таймер. Прогноз обновляется сам.")
-    self.UI:AddSection(betaTab, "Статус")
-    self.BetaNote = self.UI:AddText(betaTab, "Стабильность", "Раздел бета: механику прогноза будем докручивать по фидбеку из реальных раундов.")
 
     -- ============================== СИСТЕМА ==============================
     self.UI:AddHeading(systemTab, "СТЕЛС CALM (v" .. self.Config.Version .. ")")
     local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
     self.StealthStatus = self.UI:AddText(systemTab, "Маунт GUI: " .. mountKind,
-        "Скрытый маунт (gethui/CoreGui) — невидим игровым сканерам; в лог при загрузке идёт только номер версии")
+        "Скрытый маунт (gethui/CoreGui) — невидим игровым сканерам")
     self.UI:AddToggle(systemTab, "Безопасные телепорты (glide)", settings.SafeTeleport, function(value)
         settings.SafeTeleport = value
         if self.Stealth then self.Stealth.SafeTeleport = value end
@@ -414,17 +387,7 @@ function Features:Build()
     self.UI:AddToggle(systemTab, "Человеческие задержки", settings.HumanizeDelays, function(value)
         settings.HumanizeDelays = value
     end)
-    self.UI:AddToggle(systemTab, "Подробные логи (держать ВЫКЛ)", settings.DebugLogs, function(value)
-        settings.DebugLogs = value
-        if self.Stealth then self.Stealth.Debug = value end
-        if self.ESP then self.ESP.Debug = value end
-        if self.Farm then self.Farm.Debug = value end
-        if self.Combat then self.Combat.Debug = value end
-    end)
-    self.UI:AddButton(systemTab, "PANIC: убрать все следы", function()
-        local registry = self.Stealth and self.Stealth.Registry
-        if registry and registry.Panic then registry.Panic() end
-    end)
+    self.NetworkStatus = self.UI:AddText(systemTab, "Ремоуты", self.Network:Summary())
     self.UI:AddButton(systemTab, "Диагностика в консоль (F9)", function()
         local registry = self.Stealth and self.Stealth.Registry
         if registry and registry.Diag then
@@ -432,22 +395,13 @@ function Features:Build()
             self.StealthStatus:Set("Диагностика выведена в консоль F9")
         end
     end)
-    self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
-    self.UI:AddButton(systemTab, "Проверить известные Remotes", function()
-        self.NetworkStatus:Set(self.Network:Summary())
-    end)
-    self.UI:AddText(systemTab, "Безопасность", "Античита в MM2 не найдено (проверено по 9 хабам), но Roblox-античит на уровне клиента зависит от экзекьютора. Не провоцируй игроков на репорты.")
-
-    self.UI:AddHeading(systemTab, "Диагностика")
-    self.UI:AddText(systemTab, "Сборка " .. self.Config.Version,
-        "CALM: печатается только номер версии, рандомный ключ реестра, скрытый маунт, ноль хуков. 60+ функций в 8 вкладках.")
     self.UI:AddSection(systemTab, "Горячие клавиши (ПК)")
     self.UI:AddText(systemTab, "Раскладка",
-        (settings.KeySheriffAim or "G") .. " — SheriffAim (тихий выстрел) • " ..
-        (settings.KeyMurderAim or "H") .. " — MurderAim (тихий бросок ножа) • " ..
-        (settings.KeyGrabGun or "J") .. " — ТП к пистолету и обратно • " ..
+        (settings.KeySheriffAim or "G") .. " — SheriffAim • " ..
+        (settings.KeyMurderAim or "H") .. " — MurderAim • " ..
+        (settings.KeyGrabGun or "J") .. " — ТП к пистолету • " ..
         (settings.KeyFakeDeath or "K") .. " — фейк-смерть по кругу • " ..
-        "RightControl — скрыть/показать окно. На телефоне — плавающие кнопки на экране.")
+        "RightControl — скрыть/показать окно")
     self.UI:AddSection(systemTab, "Сессия")
     self.UI:AddButton(systemTab, "Реджойн в эту же игру", function()
         pcall(function()
@@ -455,23 +409,36 @@ function Features:Build()
         end)
     end)
 
-    -- ============================== ПЛАВАЮЩИЕ КНОПКИ + HUD ==============================
+    -- ============================== КВАДРАТНАЯ БЫСТРАЯ КНОПКА ==============================
     self.Hud = self.UI:AddFloatingHud()
     self.Hud:SetVisible(settings.ShowTimerHud ~= false)
 
-    self.FabSheriff = self.UI:AddFloatingButton("ВЫСТРЕЛ", colors.Combat, function()
-        local ok, message = self.Combat.SheriffAimShot()
-        if self.CombatStatus then pcall(function() self.CombatStatus:Set("SheriffAim: " .. tostring(message)) end) end
-    end)
-    self.FabMurder = self.UI:AddFloatingButton("НОЖ", colors.Danger, function()
-        local ok, message = self.Combat.MurderAimThrow()
-        if self.CombatStatus then pcall(function() self.CombatStatus:Set("MurderAim: " .. tostring(message)) end) end
-    end)
-    self.FabPistol = self.UI:AddFloatingButton("ПИСТ", colors.Movement, function()
-        local ok, message = self:GrabGunNow()
-        if self.PistolStatus then pcall(function() self.PistolStatus:Set(ok and tostring(message) or ("ошибка: " .. tostring(message))) end) end
-    end)
-    pcall(function() self.UI:SetFloatingHostVisible(settings.ShowFloatingButtons ~= false) end)
+    self.QuickMenu = self.UI:AddQuickMenu({
+        { Text = "ВЫСТРЕЛ", Color = colors.Combat, Callback = function()
+            local ok, message = self.Combat.SheriffAimShot()
+            if self.CombatStatus then pcall(function() self.CombatStatus:Set("SheriffAim: " .. tostring(message)) end) end
+        end },
+        { Text = "НОЖ", Color = colors.Danger, Callback = function()
+            local ok, message = self.Combat.MurderAimThrow()
+            if self.CombatStatus then pcall(function() self.CombatStatus:Set("MurderAim: " .. tostring(message)) end) end
+        end },
+        { Text = "ПИСТ", Color = colors.Movement, Callback = function()
+            local ok, message = self:GrabGunNow()
+            if self.PistolStatus then pcall(function() self.PistolStatus:Set(ok and tostring(message) or ("ошибка: " .. tostring(message))) end) end
+        end },
+        { Text = "ФЕЙК-СМЕРТЬ", Color = colors.Misc, Callback = function()
+            local message = self.Troll.CycleFakeDeath()
+            if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
+        end },
+        { Text = "ФЕЙК НОЖ", Color = colors.Success, Callback = function()
+            local ok, message = self.Troll.FakeKnife()
+            if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
+        end },
+        { Text = "ТП ЛОББИ", Color = colors.ESP, Callback = function()
+            self.Movement.ToLobby()
+        end },
+    })
+    pcall(function() self.QuickMenu:SetVisible(settings.ShowQuickMenu ~= false) end)
 end
 
 ---------------------------------------------------------------------
@@ -521,7 +488,6 @@ function Features:GrabGunNow()
     task.spawn(function()
         local before = myRoot.CFrame
         self.Stealth.GlideTo(drop.Position + Vector3.new(0, 1.5, 0), { Speed = settings.PistolSpeed or 110 })
-        -- ждём подтверждения подбора (GunDrop исчезает)
         local waited = 0
         while drop.Parent and waited < 2.5 do
             waited = waited + task.wait(0.2)
@@ -540,7 +506,7 @@ local function formatTimer(seconds)
 end
 
 ---------------------------------------------------------------------
--- Monitor loop: statuses, AutoPistol, floating buttons, hotkeys
+-- Monitor loop: statuses, AutoPistol, prediction, hotkeys
 ---------------------------------------------------------------------
 
 function Features:Start()
@@ -548,7 +514,6 @@ function Features:Start()
     self.Running = true
     self.World.Start()
 
-    -- Горячие клавиши (ПК). На телефоне то же самое — плавающими кнопками.
     self.Connections[#self.Connections + 1] = UserInputService.InputBegan:Connect(function(input, processed)
         if processed then return end
         if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -573,18 +538,14 @@ function Features:Start()
         pcall(function() self.Roles.Refresh() end)
         while self.Running and self.Alive() do
             local settings = self.Config.Settings
-            -- роли обновляет ESP-луп; если он выключен — обновляем здесь
-            local espRunning = false
-            pcall(function() espRunning = self.ESP.Enabled end)
-            if not espRunning then pcall(function() self.Roles.Refresh() end) end
-
+            -- роли обновляет свой цикл; подстраховка здесь
             pcall(function() self:UpdateRoleStatus() end)
             if self.FarmStatus then pcall(function() self.FarmStatus:Set(self.Farm.Summary()) end) end
             if self.CombatStatus and self.Combat.Status and self.Combat.Status ~= "" then
                 pcall(function() self.CombatStatus:Set(self.Combat.Status) end)
             end
 
-            -- Таймер раунда (карточка в «Игроках» + плавающий HUD)
+            -- Таймер раунда (карточка + плавающий HUD)
             pcall(function()
                 local seconds = self.World.GetTimer()
                 if self.TimerStatus then
@@ -612,7 +573,7 @@ function Features:Start()
                 end
             end)
 
-            -- БЕТА: прогноз победы (периодический пересчёт)
+            -- Прогноз победы (живое поле в «Игроках»)
             if os.clock() - self.LastPredictionAt > (settings.PredictionRefresh or 4) then
                 self.LastPredictionAt = os.clock()
                 pcall(function()
@@ -632,7 +593,7 @@ function Features:Start()
                 end)
             end
 
-            -- AutoPistol: ТП к пистолету и обратно (авторежим) + видимость кнопок
+            -- AutoPistol: ТП к пистолету и обратно (авторежим)
             local amMurderer = false
             pcall(function() amMurderer = self.Roles.LocalIsMurderer() end)
             local dropNow = self.World.GetGunDrop()
@@ -641,17 +602,6 @@ function Features:Start()
                 self.LastGrabAt = os.clock()
                 self:GrabGunNow()
             end
-            -- легаси-настройка GunGrabber из v0.1.0 ведёт себя как «Авто»
-            if settings.GunGrabber and not amMurderer and dropNow and os.clock() - self.LastGrabAt > 4 then
-                self.LastGrabAt = os.clock()
-                self:GrabGunNow()
-            end
-            pcall(function()
-                local showBase = settings.ShowFloatingButtons ~= false
-                self.FabPistol:SetVisible(showBase and dropNow ~= nil and not amMurderer and mode == "Кнопка")
-                self.FabSheriff:SetVisible(showBase and settings.SheriffAimButton ~= false and self.Roles.LocalIsSheriff())
-                self.FabMurder:SetVisible(showBase and settings.MurderAimButton ~= false and self.Roles.LocalIsMurderer())
-            end)
 
             task.wait(1.2)
         end
@@ -664,6 +614,7 @@ function Features:Destroy()
         pcall(function() connection:Disconnect() end)
     end
     self.Connections = {}
+    pcall(function() if self.QuickMenu then self.QuickMenu:Destroy() end end)
     pcall(function() self.ESP.Destroy() end)
     pcall(function() self.Farm.Destroy() end)
     pcall(function() self.Combat.Destroy() end)

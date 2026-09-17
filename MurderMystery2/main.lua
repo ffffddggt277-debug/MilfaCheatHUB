@@ -12,7 +12,7 @@
 
 local EXPECTED_PLACE_ID = 142823291
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/"
-local VERSION = "0.2.0"
+local VERSION = "0.3.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -262,8 +262,10 @@ reg.Diag = function()
     if RolesM then
         local murderer = RolesM.FindByRole("Murderer")
         local sheriff = RolesM.FindByRole("Sheriff")
-        print("  murderer: " .. table.concat(murderer, ", "))
+        print("  murderer: " .. table.concat(murderer, ", ") .. (next(RolesM.Cache) == nil and " (кэш пуст — жди раунд)" or ""))
         print("  sheriff: " .. table.concat(sheriff, ", "))
+        print("  remotes: " .. tostring(RolesM.RemotesFound or "не проверялись"))
+        print("  localRole: " .. tostring(RolesM.LocalRole or "?"))
     end
     if WorldM then
         local map = WorldM.GetMap()

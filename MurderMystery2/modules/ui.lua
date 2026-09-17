@@ -1085,6 +1085,132 @@ function UI.new(config, stealth)
     end
 
     -----------------------------------------------------------------
+    -- Квадратная плавающая кнопка быстрых действий (телефон+ПК).
+    -- Одна кнопка на экране; тап открывает панель действий.
+    -- Перетаскивается пальцем; панель следует за кнопкой.
+    -----------------------------------------------------------------
+    function self:AddQuickMenu(actions)
+        local quick = Instance.new("Frame")
+        quick.Name = randomGuiName()
+        quick.Size = UDim2.fromOffset(54, 54)
+        quick.Position = UDim2.new(1, -70, 0.5, -27)
+        quick.BackgroundColor3 = colors.Background
+        quick.BackgroundTransparency = 0.08
+        quick.BorderSizePixel = 0
+        quick.Active = true
+        quick.Parent = gui
+        corner(quick, 12)
+        stroke(quick, colors.Accent, 1.6, 0.1)
+        gradient(quick, colors.Panel2, colors.Background, 90)
+
+        local icon = Instance.new("TextLabel")
+        icon.Size = UDim2.new(1, 0, 1, 0)
+        icon.BackgroundTransparency = 1
+        icon.Text = "М"
+        icon.TextColor3 = colors.Accent
+        icon.Font = Enum.Font.GothamBold
+        icon.TextSize = 22
+        icon.Parent = quick
+
+        -- панель действий
+        local panel = Instance.new("Frame")
+        panel.Name = randomGuiName()
+        panel.Size = UDim2.fromOffset(128, 8 + math.max(1, #actions) * 42)
+        panel.Position = UDim2.new(1, -70, 0.5, -27 - (8 + math.max(1, #actions) * 42) - 8)
+        panel.BackgroundColor3 = colors.Background
+        panel.BackgroundTransparency = 0.06
+        panel.BorderSizePixel = 0
+        panel.Visible = false
+        panel.Active = true
+        panel.Parent = gui
+        corner(panel, 12)
+        stroke(panel, colors.Border, 1.2, 0.12)
+
+        local panelList = Instance.new("UIListLayout")
+        panelList.Padding = UDim.new(0, 6)
+        panelList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        panelList.VerticalAlignment = Enum.VerticalAlignment.Center
+        panelList.SortOrder = Enum.SortOrder.LayoutOrder
+        panelList.Parent = panel
+
+        local open = false
+        local function place()
+            panel.Position = UDim2.new(
+                quick.Position.X.Scale, quick.Position.X.Offset,
+                quick.Position.Y.Scale, quick.Position.Y.Offset - panel.Size.Y.Offset - 8)
+        end
+
+        for index, action in ipairs(actions or {}) do
+            local item = Instance.new("TextButton")
+            item.Name = randomGuiName()
+            item.LayoutOrder = index
+            item.Size = UDim2.fromOffset(114, 36)
+            item.BackgroundColor3 = colors.Panel
+            item.BackgroundTransparency = 0.1
+            item.BorderSizePixel = 0
+            item.Text = tostring(action.Text or "?")
+            item.TextColor3 = action.Color or colors.Text
+            item.Font = Enum.Font.Code
+            item.TextSize = 12
+            item.Parent = panel
+            corner(item, 9)
+            stroke(item, action.Color or colors.Border, 1, 0.2)
+            item.MouseButton1Click:Connect(function()
+                task.spawn(function()
+                    if action.Callback then action.Callback() end
+                end)
+            end)
+        end
+
+        -- перетаскивание квадратной кнопки (мышь + палец)
+        local dragging = false
+        local dragMoved = false
+        local dragStart, startPos
+        quick.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragMoved = false
+                dragStart = input.Position
+                startPos = quick.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                        if not dragMoved then
+                            open = not open
+                            panel.Visible = open
+                            if open then place() end
+                        end
+                    end
+                end)
+            end
+        end)
+        quick.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                if math.abs(delta.X) + math.abs(delta.Y) > 6 then dragMoved = true end
+                if dragMoved then
+                    quick.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                    if open then place() end
+                end
+            end
+        end)
+
+        return {
+            Frame = quick,
+            Panel = panel,
+            SetVisible = function(_, value)
+                quick.Visible = value == true
+                if not value then panel.Visible = false; open = false end
+            end,
+            Destroy = function()
+                pcall(function() panel:Destroy() end)
+                pcall(function() quick:Destroy() end)
+            end,
+        }
+    end
+
+    -----------------------------------------------------------------
     -- Плавающий HUD: таймер раунда + строка ролей (перетаскивается).
     -----------------------------------------------------------------
     function self:AddFloatingHud()

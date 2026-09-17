@@ -26,12 +26,21 @@ local StealthRef = nil
 
 local running = false
 local loopThread = nil
+local espConnections = {} -- PlayerAdded/Removing/Character события — мгновенный рефреш
 local drawData = {}       -- [player] = {Highlight, Billboard, TextLabel, Beam, Attach0, Attach1}
 local gunDropDraw = nil
 local gunDropSeen = false
 local lastAlertAt = 0
 local coinDraws = {}      -- [coinPart] = Highlight
 local beepSound = nil
+
+local function unbindLiveRefresh()
+    for index, connection in ipairs(espConnections) do
+        pcall(function() connection:Disconnect() end)
+        espConnections[index] = nil
+    end
+    espConnections = {}
+end
 
 local function note(...)
     if ESP.Debug then print("[mh esp]", ...) end
@@ -216,6 +225,35 @@ local function drawPlayer(player, settings)
     end
 end
 
+-- Мгновенная перерисовка: игрок вышел/зашёл/умер/заспавнился.
+-- (объявлена ПОСЛЕ drawPlayer, чтобы замыкания поймали локали)
+local function bindLiveRefresh()
+    if espConnections[1] then return end
+    local PlayersService = game:GetService("Players")
+    espConnections[#espConnections + 1] = PlayersService.PlayerAdded:Connect(function(player)
+        task.wait(1)
+        if running then pcall(drawPlayer, player, ConfigRef.Settings) end
+    end)
+    espConnections[#espConnections + 1] = PlayersService.PlayerRemoving:Connect(function(player)
+        cleanupDraw(drawData[player])
+        drawData[player] = nil
+    end)
+    -- респавн любого игрока -> перерисовать его (новая модель = старые билборды мертвы)
+    espConnections[#espConnections + 1] = workspace.ChildAdded:Connect(function(child)
+        if child:IsA("Model") then
+            for _, player in ipairs(PlayersService:GetPlayers()) do
+                if player.Character == child and running then
+                    cleanupDraw(drawData[player])
+                    drawData[player] = nil
+                    task.delay(0.5, function()
+                        if running and player.Parent then pcall(drawPlayer, player, ConfigRef.Settings) end
+                    end)
+                end
+            end
+        end
+    end)
+end
+
 local function drawGunDrop(settings)
     if not settings.GunDropESP and not settings.GunDropAlert then return end
     local drop = WorldRef.GetGunDrop()
@@ -343,6 +381,7 @@ function ESP.SetCoins(value)
     ConfigRef.Settings.CoinESP = value and true or false
     if value and not running then
         running = true
+        bindLiveRefresh()
         loopThread = task.spawn(loop)
     end
     if not value then clearCoins() end
@@ -353,9 +392,11 @@ function ESP.SetEnabled(value)
     ESP.Enabled = value and true or false
     if value and not running then
         running = true
+        bindLiveRefresh()
         loopThread = task.spawn(loop)
     elseif not value then
         running = false
+        unbindLiveRefresh()
         clearAll()
     end
 end
@@ -370,6 +411,7 @@ end
 
 function ESP.Destroy()
     running = false
+    unbindLiveRefresh()
     clearAll()
     clearCoins()
 end

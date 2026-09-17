@@ -1,21 +1,21 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Shared branding, palette, paths and defaults. v0.2.0
+-- Shared branding, palette, paths and defaults. v0.3.0
 --
 -- CALM-доктрина наследуется из Steal-A-Egg v0.6.2:
 --   * при загрузке печатается ТОЛЬКО голый номер версии (LogService читается
 --     игровыми скриптами — слов в логе быть не должно)
 --   * GUI появляется сразу и маунтится скрыто (gethui/CoreGui)
 --   * ноль хуков при загрузке; всё агрессивное — только opt-in
--- Данные ресёрча (9 открытых хабов, research/mm2_repos/FINDINGS_MM2.md):
---   роли = ReplicatedStorage.GetPlayerData RF + пуш PlayerDataChanged;
---   монеты = CoinContainer/Coin_Server (сбор через firetouchinterest);
---   пистолет = workspace.GunDrop; убийство = Knife.Events.KnifeStabbed +
---   HandleTouched; античита в игре не обнаружено.
+-- Данные ресёрча v0.3.0 (рабочие скрипты KittyHub/W-Azeox/R3TH/MM2 Mods):
+--   роли = Remotes.Extras.GetPlayerData (рекурсивный поиск!) + пуш
+--          PlayerDataChanged (2 формы); убийство = Knife.Stab("Down"/"Up")
+--          + ТП-стаб; выстрел = Gun.KnifeLocal.CreateBeam(1,pos,"AH2");
+--          фейк нож = спрей SprayPaint на руку; эмоции = Remotes.PlayEmote.
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.2.0",
+    Version = "0.3.0",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
@@ -55,16 +55,18 @@ return {
     },
 
     KnownEndpoints = {
-        "RF/GetPlayerData",
+        "RF/Remotes.Extras.GetPlayerData (рекурсивно)",
         "RF/Remotes.Extras.GetTimer",
-        "RE/Remotes.Gameplay.PlayerDataChanged",
+        "RE/Remotes.Gameplay.PlayerDataChanged (2 формы)",
         "RE/Remotes.Gameplay.CoinCollected",
-        "RE/Character.Knife.Stab",
+        "RE/Remotes.Gameplay.FakeGun",
+        "RE/Remotes.Gameplay.Stealth (невидимка)",
+        "RE/Remotes.PlayEmote",
+        "RF/Remotes.Extras.ReplicateToy (SprayPaint)",
+        "RE/Character.Knife.Stab (Down/Up)",
         "RE/Character.Knife.Events.KnifeThrown",
-        "RE/Character.Knife.Events.KnifeStabbed",
-        "RE/Character.Knife.Events.HandleTouched",
-        "RF/Character.Gun.KnifeLocal.CreateBeam.RemoteFunction",
-        "RE/Character.Gun.Shoot",
+        "RF/Character.Gun.KnifeLocal.CreateBeam.RemoteFunction (AH2/AH)",
+        "RF/Character.Gun.KnifeServer.ShootGun (фолбэк)",
     },
 
     Settings = {
@@ -98,9 +100,10 @@ return {
         AntiAFK = false,
 
         -- Бой (только у своей роли; повышенный риск репортов)
-        KnifeAura = false,        -- автоудар ближайшего в радиусе (маньяк)
+        KnifeAura = false,        -- ТП-стаб по ближайшим (маньяк)
         AuraRadius = 14,
         AuraDelay = 1.0,
+        KillAllRadius = 60,       -- радиус KILL ALL
         SheriffAuto = false,      -- авто-выстрел в видимого маньяка (шериф/хиро)
         SheriffRange = 300,
 
@@ -130,11 +133,16 @@ return {
 
         -- HUD и мелочи
         ShowTimerHud = true,       -- плавающий таймер раунда
+        ShowQuickMenu = true,      -- квадратная быстрая кнопка на экране
         Tracers = false,           -- лучи к игрокам (роли)
         AlertBeep = false,         -- звук при «маньяк рядом»
         CoinESP = false,           -- подсветка монет на карте
         FOV = 70,                  -- поле зрения камеры
         WideZoom = false,          -- отдалить макс. зум (обзор карты)
+
+        -- Троллинг
+        FakeGlitch = false,        -- «глючный» персонаж (видно всем)
+        Invisible = false,         -- родная невидимость игры (Stealth remote)
 
         -- Персонаж
         WalkSpeed = 16,

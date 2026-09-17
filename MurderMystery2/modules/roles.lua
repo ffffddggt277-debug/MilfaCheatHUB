@@ -1,15 +1,24 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Role detection core v0.1.0.
+-- Role detection core v0.3.0 (FIXED against live scripts).
 --
--- Two channels (verified against live game structure, see FINDINGS_MM2.md):
---   1) Data: ReplicatedStorage.GetPlayerData (RemoteFunction) returns the whole
---      role table {[playerName] = {Role=..., Killed=..., Dead=...}}. The server
---      PUSHES updates through Remotes.Gameplay.PlayerDataChanged — that is how
---      the murderer is known BEFORE their knife is visible.
---   2) Tools fallback: Knife in Character/Backpack = Murderer, Gun = Sheriff;
---      an Innocent holding the gun = Hero (sheriff died, gun picked up).
--- The local player's role is latched per round (knife leaves the hand when
--- thrown, data may flicker — we keep the last known Murderer/Sheriff/Hero).
+-- ПРИЧИНА КРАСНЫХ КРУГОВ v0.2.0: удалённый поиск был НЕ рекурсивным, а
+-- GetPlayerData лежит НЕ в корне ReplicatedStorage (он под Remotes/Extras —
+-- подтверждено рабочими скриптами R3TH/KittyHub). Из-за этого роли не
+-- находились вообще -> «роль: ?», пустые алерты, мёртвые аимы и телепорты.
+-- KittyHub: "MM2 moves these between updates, so resolve by recursive name
+-- lookup and re-resolve if the cached instance gets reparented."
+--
+-- Каналы данных:
+--   1) GetPlayerData (RemoteFunction, позиция в дереве НЕ важна):
+--      InvokeServer() -> {[name] = {Role=..., Killed=..., Dead=...}};
+--   2) пуш Remotes.Gameplay.PlayerDataChanged (RemoteEvent): сервер шлёт либо
+--      ЦЕЛИКОМ таблицу, либо ОДНУ запись (name, entry) — обрабатываем оба
+--      варианта (KittyHub);
+--   3) фолбэк по тулзам: нож = маньяк, пистолет = шериф (мирный с пистолетом
+--      = герой); чужой рюкзак не реплицируется, поэтому сканируем Character
+--      (вынутое оружие) + Backpack (реплицируется только свой).
+-- LocalRole защёлкивается на раунд (нож покидает руку при броске, данные
+-- мигают — держим последнее известное значение).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -17,54 +26,52 @@ local Players = game:GetService("Players")
 local Roles = {}
 
 Roles.Cache = {}          -- [playerName] = "Murderer" | "Sheriff" | "Hero" | "Innocent" | "Unknown"
-Roles.Alive = {}          -- [playerName] = boolean (last known)
-Roles.LocalRole = nil     -- latched own role for the round
+Roles.Alive = {}          -- [playerName] = boolean
+Roles.LocalRole = nil
 Roles.Debug = false
-Roles.OnUpdate = nil      -- callback(allRoles table) fired after each refresh
+Roles.OnUpdate = nil
+Roles.RemotesFound = ""   -- строка для диагностики
 
 local dataRemote = nil
 local pushEvent = nil
 local connections = {}
-local roundSeed = 0
+local refreshThread = nil
+local lastSearchAt = 0
+local localPlayer = Players.LocalPlayer
 
 local function note(...)
     if Roles.Debug then print("[mh roles]", ...) end
 end
 
-local function findRemotes()
-    if dataRemote and dataRemote.Parent then return end
-    -- Primary: ReplicatedStorage.GetPlayerData (RemoteFunction).
-    local ok, result = pcall(function()
-        return ReplicatedStorage:FindFirstChild("GetPlayerData")
-    end)
-    if ok and result and result:IsA("RemoteFunction") then
-        dataRemote = result
+-- Рекурсивный резолвер с переподключением (ремоуты переезжают между апдейтами).
+local function resolveRemote(name, expectClass)
+    local found
+    pcall(function() found = ReplicatedStorage:FindFirstChild(name, true) end)
+    if found and (not expectClass or found:IsA(expectClass)) then
+        return found
     end
-    -- Fallback: Remotes.Gameplay / *PlayerData*.
-    if not dataRemote then
-        pcall(function()
-            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-            local gameplay = remotes and remotes:FindFirstChild("Gameplay")
-            if gameplay then
-                for _, child in ipairs(gameplay:GetChildren()) do
-                    local name = string.lower(child.Name)
-                    if child:IsA("RemoteFunction") and string.find(name, "playerdata") then
-                        dataRemote = child
-                        break
-                    end
-                end
-            end
-        end)
+    return nil
+end
+
+local function findRemotes(force)
+    if not force and dataRemote and dataRemote.Parent and pushEvent and pushEvent.Parent then
+        return
     end
-    -- Push channel: Remotes.Gameplay.PlayerDataChanged.
-    pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local gameplay = remotes and remotes:FindFirstChild("Gameplay")
-        if gameplay then
-            pushEvent = gameplay:FindFirstChild("PlayerDataChanged") or pushEvent
-        end
-    end)
-    note("remotes: data=" .. tostring(dataRemote ~= nil) .. " push=" .. tostring(pushEvent ~= nil))
+    -- если что-то не найдено — полный рекурсивный обход не чаще раза в 15с
+    if not force and os.clock() - lastSearchAt < 15 then return end
+    lastSearchAt = os.clock()
+    local newData = resolveRemote("GetPlayerData", "RemoteFunction")
+    if newData ~= dataRemote or (newData and not newData.Parent) then
+        dataRemote = newData
+    end
+    local newPush = resolveRemote("PlayerDataChanged", "RemoteEvent")
+    if newPush ~= pushEvent then
+        pushEvent = newPush
+        Roles._pushConnected = false  -- переподписаться на новый инстанс
+    end
+    Roles.RemotesFound = "data=" .. tostring(dataRemote ~= nil) ..
+        " push=" .. tostring(pushEvent ~= nil)
+    if Roles.Debug then note(Roles.RemotesFound) end
 end
 
 local function normalizeRole(value)
@@ -74,82 +81,88 @@ local function normalizeRole(value)
     if string.find(lowered, "sheriff", 1, true) then return "Sheriff" end
     if string.find(lowered, "hero", 1, true) then return "Hero" end
     if string.find(lowered, "inno", 1, true) then return "Innocent" end
-    return value
+    return "Unknown"
 end
 
-local function markRoundReset()
-    roundSeed = roundSeed + 1
-    Roles.LocalRole = nil
+local function applyEntry(name, record)
+    if type(name) ~= "string" or type(record) ~= "table" then return false end
+    local role = normalizeRole(record.Role)
+    local killed = record.Killed == true or record.Dead == true
+    Roles.Cache[name] = role
+    Roles.Alive[name] = not killed
+    if localPlayer and name == localPlayer.Name and role ~= "Unknown" then
+        -- не даём случайному пушу сбить защёлкнутого маньяка на мирного
+        if Roles.LocalRole ~= "Murderer" or role ~= "Innocent" then
+            Roles.LocalRole = role
+        end
+    end
+    return true
 end
 
--- TOOL-FALLBACK: knife/gun scan. Innocent holding the gun becomes Hero.
+local function applyTable(payload)
+    local seen = {}
+    for name, record in pairs(payload) do
+        if type(name) == "string" and type(record) == "table" then
+            applyEntry(name, record)
+            seen[name] = true
+        end
+    end
+    -- игроки, пропавшие из таблицы: новый раунд или выход
+    for name in pairs(Roles.Cache) do
+        if not seen[name] then
+            Roles.Cache[name] = nil
+            Roles.Alive[name] = nil
+            if localPlayer and name == localPlayer.Name then
+                Roles.LocalRole = nil
+            end
+        end
+    end
+    if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
+end
+
+-- TOOL-фолбэк: вынутый нож/пистолет в Character виден всем; свой рюкзак тоже
+-- реплицируется. Мирный с пистолетом = герой.
 local function detectFromTools()
-    local found = {}
     for _, player in ipairs(Players:GetPlayers()) do
         local held = nil
         pcall(function()
-            local backpack = player:FindFirstChildOfClass("Backpack")
             local character = player.Character
-            if backpack and (backpack:FindFirstChild("Knife") or (character and character:FindFirstChild("Knife"))) then
+            local backpack = player:FindFirstChildOfClass("Backpack")
+            local function has(container, toolName)
+                return container and container:FindFirstChild(toolName) ~= nil
+            end
+            if has(character, "Knife") or (player == localPlayer and has(backpack, "Knife")) then
                 held = "Murderer"
-            elseif backpack and (backpack:FindFirstChild("Gun") or (character and character:FindFirstChild("Gun"))) then
-                held = "Sheriff"
+            elseif has(character, "Gun") or (player == localPlayer and has(backpack, "Gun")) then
+                held = (player == localPlayer and Roles.LocalRole == "Innocent") and "Hero" or "Sheriff"
             end
         end)
-        if held then
-            local current = Roles.Cache[player.Name]
-            if current == "Innocent" or current == nil or current == "Unknown" then
-                found[player.Name] = held
+        if held and held ~= Roles.Cache[player.Name] then
+            Roles.Cache[player.Name] = held
+            Roles.Alive[player.Name] = true
+            if player == localPlayer then
+                if held == "Hero" or Roles.LocalRole == nil then Roles.LocalRole = held end
             end
+            note("tools: " .. player.Name .. " = " .. held)
         end
     end
-    return found
-end
-
--- Pull the whole role table from the RemoteFunction. The payload is either
--- {[name] = {Role=...}} or a single record {[name] = Role-string}.
-local function pullFromData()
-    if not dataRemote then return nil end
-    local ok, payload = pcall(function() return dataRemote:InvokeServer() end)
-    if not ok or type(payload) ~= "table" then
-        note("pull failed: " .. tostring(payload))
-        return nil
-    end
-    return payload
 end
 
 function Roles.Refresh()
-    findRemotes()
-    -- Re-arm the push listener if a previous session shut it down.
+    -- findRemotes(false): перепоиск ТОЛЬКО если кэш умер (рекурсивный обход
+    -- ReplicatedStorage каждый тик — дорого для телефона)
+    findRemotes(false)
     Roles.Listen()
 
-    local data = pullFromData()
-    if data then
-        for name, record in pairs(data) do
-            if type(name) == "string" then
-                local role = "Unknown"
-                local alive = true
-                if type(record) == "table" then
-                    role = normalizeRole(record.Role)
-                    alive = not record.Killed and not record.Dead
-                elseif type(record) == "string" then
-                    role = normalizeRole(record)
-                end
-                Roles.Cache[name] = role
-                Roles.Alive[name] = alive
-                if Players.LocalPlayer and name == Players.LocalPlayer.Name and role ~= "Unknown" then
-                    Roles.LocalRole = role
-                end
-            end
+    if dataRemote then
+        local ok, payload = pcall(function() return dataRemote:InvokeServer() end)
+        if ok and type(payload) == "table" then
+            applyTable(payload)
+        else
+            note("pull failed: " .. tostring(payload))
         end
     end
-
-    -- Tools may reveal roles the data pull missed (e.g. RF absent in a build).
-    for name, role in pairs(detectFromTools()) do
-        Roles.Cache[name] = role
-        Roles.Alive[name] = Roles.Alive[name] ~= false
-    end
-
+    detectFromTools()
     if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
 end
 
@@ -208,56 +221,43 @@ function Roles.LocalIsSheriff()
     return Roles.LocalRole == "Sheriff" or Roles.LocalRole == "Hero"
 end
 
--- Round boundary: any role table reset (new round) clears the latch.
-Roles.ResetRound = markRoundReset
-
 function Roles.Listen()
     if pushEvent and not Roles._pushConnected then
         Roles._pushConnected = true
-        local connection = pushEvent.OnClientEvent:Connect(function(payload)
-            if type(payload) ~= "table" then return end
-            -- Full table push resets roles that vanished (round change).
-            local seen = {}
-            for name, record in pairs(payload) do
-                if type(name) == "string" then
-                    seen[name] = true
-                    local role, alive = "Unknown", true
-                    if type(record) == "table" then
-                        role = normalizeRole(record.Role)
-                        alive = not record.Killed and not record.Dead
-                    elseif type(record) == "string" then
-                        role = normalizeRole(record)
-                    end
-                    Roles.Cache[name] = role
-                    Roles.Alive[name] = alive
-                    if Players.LocalPlayer and name == Players.LocalPlayer.Name and role ~= "Unknown" then
-                        if Roles.LocalRole ~= "Murderer" or role ~= "Innocent" then
-                            Roles.LocalRole = role
-                        end
-                    end
-                end
+        local connection = pushEvent.OnClientEvent:Connect(function(first, second)
+            if type(first) == "table" then
+                applyTable(first)               -- форма 1: вся таблица
+            elseif second ~= nil then
+                applyEntry(first, second)       -- форма 2: (имя|Player, запись)
+                if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
             end
-            for name in pairs(Roles.Cache) do
-                if not seen[name] then
-                    Roles.Cache[name] = nil
-                    Roles.Alive[name] = nil
-                    markRoundReset()
-                end
-            end
-            if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
         end)
         connections[#connections + 1] = connection
     end
 end
 
+function Roles.Start()
+    if refreshThread then return end
+    refreshThread = task.spawn(function()
+        while Roles._running ~= false do
+            pcall(Roles.Refresh)
+            task.wait(2)
+        end
+    end)
+end
+
 function Roles.Shutdown()
+    Roles._running = false
     for _, connection in ipairs(connections) do
         pcall(function() connection:Disconnect() end)
     end
     connections = {}
     Roles._pushConnected = false
+    refreshThread = nil
 end
 
+Roles._running = true
 Roles.Listen()
+Roles.Start()
 
 return Roles

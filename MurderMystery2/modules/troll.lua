@@ -1,40 +1,56 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Troll pack v0.2.0: fake death (2 types), emotes/animations,
--- fake gun and toy bomb (game's own troll remotes).
+-- Troll pack v0.3.0 (FIXED against live scripts).
 --
--- Fake death types are CLIENT-SIDE visuals (MM2 death is server-authoritative,
--- nobody can fake a real death):
---   Type 1 "Рагдолл": character lies down locally (physics state + rotated
---            root), classic "oof" sound, controls frozen. Good for screenshots
---            and pranking friends on your screen.
---   Type 2 "Призрак": own character becomes fully transparent locally —
---            you walk as an invisible ghost (still alive, can watch the
---            murderer work; combine with ESP).
--- Emotes: game's own Remotes.Misc.PlayEmote if present, otherwise a local
--- Animator plays classic Roblox emote animations.
--- FakeGun/FakeBomb: Remotes.Gameplay.FakeGun + Remotes.Extras.ReplicateToy
--- ("FakeBomb") — the game's built-in troll items (see FINDINGS_MM2.md).
+-- Починено/добавлено:
+--   * Эмоции: ремоут это Remotes.PlayEmote (сразу под Remotes, рекурсивный
+--     поиск — подтверждено W-Azeox). Пробуем :FireServer(имя) и :Fire(имя).
+--     Если ремоута нет — локальная анимация (видно только тебе).
+--   * Фейк-пистолет: Remotes.Gameplay.FakeGun:FireServer(true) — родной
+--     предмет игры, видно ВСЕМ (подтверждено 3 скриптами).
+--   * Фейк нож: метод «как делают другие» (MM2 Mods): игрушка SprayPaint
+--     (Remotes.Extras.ReplicateToy) рисует ДЕКАЛЬ ножа на правой руке —
+--     спрей реплицируется сервером, ВСЕ видят нож в твоей руке.
+--   * Фейк глитч: персонаж «глючит» для всех — микроТП, спины, дёрганья
+--     анимаций (CFrame реплицируется, другие игроки это видят).
+--   * Невидимка: Remotes.Gameplay.Stealth:FireServer(true) — родная
+--     невидимость игры (подтверждено 3 скриптами), risky.
+--   * Фейк смерть 2 типа остались (рагдолл/призрак, локальный вид).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
 
 local Troll = {}
 
-Troll.ActiveKind = nil   -- "Рагдолл" | "Призрак" | nil
+Troll.ActiveKind = nil      -- "Рагдолл" | "Призрак" | nil
+Troll.FakeGlitch = false
+Troll.Invisible = false
 Troll.Debug = false
 
 local ConfigRef = nil
 local StealthRef = nil
 local localPlayer = Players.LocalPlayer
 
-local savedState = nil   -- snapshot for restore
-local ghostParts = {}    -- [part] = original Transparency
+local savedState = nil
+local ghostParts = {}
 local connections = {}
 local deathSound = nil
 
+-- Фейк глитч state
+local glitchThread = nil
+-- Фейк нож state
+local fakeKnifeDecals = {}
+
 local function note(...)
     if Troll.Debug then print("[mh troll]", ...) end
+end
+
+local function findRemote(name, className)
+    local found
+    pcall(function() found = ReplicatedStorage:FindFirstChild(name, true) end)
+    if found and (not className or found:IsA(className)) then return found end
+    return nil
 end
 
 local function playOof()
@@ -51,12 +67,12 @@ end
 
 local function getCharacterParts()
     local character = localPlayer and localPlayer.Character
-    if not character then return nil, nil end
+    if not character then return nil, nil, nil end
     return character, character:FindFirstChildOfClass("Humanoid"), character:FindFirstChild("HumanoidRootPart")
 end
 
 ---------------------------------------------------------------------
--- Fake death type 1: ragdoll (local lie-down)
+-- Fake death type 1: ragdoll
 ---------------------------------------------------------------------
 
 local function enterRagdoll()
@@ -75,12 +91,11 @@ local function enterRagdoll()
         root.CFrame = root.CFrame * CFrame.Angles(0, 0, math.rad(82))
     end)
     playOof()
-    note("fake death: ragdoll on")
     return true
 end
 
 ---------------------------------------------------------------------
--- Fake death type 2: ghost (local invisibility)
+-- Fake death type 2: ghost
 ---------------------------------------------------------------------
 
 local function enterGhost()
@@ -100,7 +115,6 @@ local function enterGhost()
         end
     end)
     playOof()
-    note("fake death: ghost on")
     return true
 end
 
@@ -114,7 +128,6 @@ local function restoreRagdoll()
             humanoid.JumpPower = savedState.JumpPower
         end)
     end
-    -- выпрямить персонажа, если лежит
     if root and root.Parent then
         pcall(function()
             local pos = root.Position
@@ -139,14 +152,9 @@ local function restoreGhost()
     ghostParts = {}
 end
 
----------------------------------------------------------------------
--- Public API
----------------------------------------------------------------------
-
 -- kind: nil (выключить) | "Рагдолл" | "Призрак"
 function Troll.SetFakeDeath(kind)
     if kind == Troll.ActiveKind then return true end
-    -- сначала всегда восстановиться
     if Troll.ActiveKind == "Рагдолл" then restoreRagdoll() end
     if Troll.ActiveKind == "Призрак" then restoreGhost() end
     Troll.ActiveKind = nil
@@ -159,7 +167,6 @@ function Troll.SetFakeDeath(kind)
 end
 
 function Troll.CycleFakeDeath()
-    -- выключено -> рагдолл -> призрак -> выключено
     if Troll.ActiveKind == nil then
         Troll.SetFakeDeath("Рагдолл")
         return "фейк-смерть: РАГДОЛЛ"
@@ -173,7 +180,7 @@ function Troll.CycleFakeDeath()
 end
 
 ---------------------------------------------------------------------
--- Emotes: game remote first, local animation fallback.
+-- Эмоции: Remotes.PlayEmote (рекурсивно) + локальный фолбэк
 ---------------------------------------------------------------------
 
 local EMOTE_ANIMS = {
@@ -184,9 +191,10 @@ local EMOTE_ANIMS = {
     ["Указать"] = "rbxassetid://507770453",
     ["Танец 2"] = "rbxassetid://507771955",
     ["Танец 3"] = "rbxassetid://507777268",
+    ["Zen"] = "rbxassetid://507771955",
 }
 
--- соответствие кнопок -> имена эмоций игрового ремоута
+-- имена для игрового ремоута (как в EmotePages игры)
 local GAME_EMOTE_NAMES = {
     ["Zen"] = "zen",
     ["Махать"] = "wave",
@@ -199,7 +207,7 @@ local GAME_EMOTE_NAMES = {
 local emoteTrack = nil
 
 function Troll.PlayEmote(buttonName)
-    local humanoid = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local character, humanoid = getCharacterParts()
     if not humanoid then return false, "нет персонажа" end
     if buttonName == "Сесть" then
         pcall(function() humanoid.Sit = true end)
@@ -208,12 +216,13 @@ function Troll.PlayEmote(buttonName)
     -- 1) родной игровой ремоут (видно всем)
     local played = false
     pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local misc = remotes and remotes:FindFirstChild("Misc")
-        local playEmote = misc and misc:FindFirstChild("PlayEmote")
-        if playEmote and GAME_EMOTE_NAMES[buttonName] then
-            playEmote:FireServer(GAME_EMOTE_NAMES[buttonName])
-            played = true
+        local playEmote = findRemote("PlayEmote", "RemoteEvent")
+        local gameName = GAME_EMOTE_NAMES[buttonName]
+        if playEmote and gameName then
+            local fired = false
+            pcall(function() playEmote:FireServer(gameName); fired = true end)
+            if not fired then pcall(function() playEmote:Fire(gameName); fired = true end) end
+            played = fired
         end
     end)
     if played then
@@ -235,29 +244,204 @@ function Troll.PlayEmote(buttonName)
 end
 
 ---------------------------------------------------------------------
--- Game's own troll items
+-- SprayPaint-игрушка: база для фейка ножа (видно всем)
+---------------------------------------------------------------------
+
+local KNIFE_SPRAY_IDS = { 15093138669, 15096522641 }
+
+-- Достаём SprayPaint в Character (сначала ReplicateToy, потом свой).
+local function obtainSprayPaint()
+    local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+    local character = localPlayer.Character
+    local spray = character and character:FindFirstChild("SprayPaint")
+    if spray then return spray end
+    -- из "Toys" папки или напрямую
+    local toys = backpack and (backpack:FindFirstChild("Toys") or backpack)
+    spray = toys and toys:FindFirstChild("SprayPaint")
+    if not spray then
+        pcall(function()
+            local replicateToy = findRemote("ReplicateToy", "RemoteFunction")
+            if replicateToy then replicateToy:InvokeServer("SprayPaint") end
+        end)
+        task.wait(0.4)
+        toys = backpack and (backpack:FindFirstChild("Toys") or backpack)
+        spray = toys and toys:FindFirstChild("SprayPaint")
+    end
+    if spray and character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then pcall(function() humanoid:EquipTool(spray) end) end
+        spray = character:FindFirstChild("SprayPaint")
+    end
+    return spray
+end
+
+-- Спрей картинки на часть. Видно всем (реплицируется сервером).
+local function sprayOn(spray, imageId, normalId, size, part, cframe)
+    local ok = false
+    pcall(function()
+        local remote = spray:FindFirstChild("Remote")
+        if remote and remote:IsA("RemoteEvent") then
+            remote:FireServer(imageId, normalId, size, part, cframe)
+            ok = true
+        end
+    end)
+    return ok
+end
+
+function Troll.FakeKnife()
+    local character, _, root = getCharacterParts()
+    if not character or not root then return false, "нет персонажа" end
+    local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+    if not hand then return false, "нет руки" end
+    local spray = obtainSprayPaint()
+    if not spray then return false, "SprayPaint недоступна" end
+    local okCount = 0
+    for _, id in ipairs(KNIFE_SPRAY_IDS) do
+        if sprayOn(spray, id, Enum.NormalId.Right, 3, hand, hand.CFrame * CFrame.new(0, 0, -0.7)) then
+            okCount = okCount + 1
+        end
+    end
+    -- вернуть спрей в рюкзак (не мешает играть)
+    pcall(function()
+        local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+        if spray.Parent == character and backpack then spray.Parent = backpack end
+    end)
+    if okCount > 0 then
+        return true, "фейк-нож на руке (видно всем)"
+    end
+    return false, "спрей не сработал"
+end
+
+---------------------------------------------------------------------
+-- Фейк-бомба: локальная игрушка (для скринов/видео)
+---------------------------------------------------------------------
+
+local fakeBombModel = nil
+
+function Troll.FakeBomb()
+    local character, _, root = getCharacterParts()
+    if not root then return false, "нет персонажа" end
+    pcall(function()
+        if fakeBombModel then fakeBombModel:Destroy(); fakeBombModel = nil end
+        local bomb = Instance.new("Part")
+        bomb.Size = Vector3.new(1, 1.2, 1)
+        bomb.Shape = Enum.PartType.Ball
+        bomb.Color = Color3.fromRGB(20, 20, 24)
+        bomb.Material = Enum.Material.SmoothPlastic
+        bomb.CanCollide = false
+        bomb.Massless = true
+        bomb.CFrame = root.CFrame * CFrame.new(0, -2.6, -1.6)
+        local light = Instance.new("PointLight")
+        light.Color = Color3.fromRGB(255, 60, 40)
+        light.Range = 6
+        light.Brightness = 2
+        light.Parent = bomb
+        local spark = Instance.new("ParticleEmitter")
+        spark.Color = ColorSequence.new(Color3.fromRGB(255, 180, 60))
+        spark.Size = NumberSequence.new(0.25, 0)
+        spark.Lifetime = NumberRange.new(0.2, 0.4)
+        spark.Rate = 40
+        spark.Speed = NumberRange.new(1, 2)
+        spark.Parent = bomb
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = bomb
+        weld.Part1 = root
+        weld.Parent = bomb
+        bomb.Parent = character
+        fakeBombModel = bomb
+        task.delay(6, function()
+            pcall(function()
+                if fakeBombModel == bomb then bomb:Destroy(); fakeBombModel = nil end
+            end)
+        end)
+    end)
+    playOof()
+    return true, "фейк-бомба у ног (6 сек, видно на твоём экране)"
+end
+
+---------------------------------------------------------------------
+-- Фейк-пистолет: родной предмет игры (видно всем)
 ---------------------------------------------------------------------
 
 function Troll.FakeGun()
     local ok = pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local gameplay = remotes and remotes:FindFirstChild("Gameplay")
-        local fakeGun = gameplay and gameplay:FindFirstChild("FakeGun")
-        if fakeGun then fakeGun:FireServer(true) end
+        local fakeGun = findRemote("FakeGun", "RemoteEvent")
+        if fakeGun then
+            fakeGun:FireServer(true)
+        else
+            error("не найден")
+        end
     end)
-    if ok then return true, "фейк-пистолет показан" end
+    if ok then return true, "фейк-пистолет показан (видно всем)" end
     return false, "ремоут FakeGun не найден"
 end
 
-function Troll.FakeBomb()
+---------------------------------------------------------------------
+-- Невидимка: родной Stealth игры (видно всем)
+---------------------------------------------------------------------
+
+function Troll.SetInvisible(value)
+    Troll.Invisible = value and true or false
+    ConfigRef.Settings.Invisible = Troll.Invisible
     local ok = pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local extras = remotes and remotes:FindFirstChild("Extras")
-        local replicateToy = extras and extras:FindFirstChild("ReplicateToy")
-        if replicateToy then replicateToy:InvokeServer("FakeBomb") end
+        local stealthRemote = findRemote("Stealth", "RemoteEvent")
+        if not stealthRemote then error("нет") end
+        stealthRemote:FireServer(Troll.Invisible)
     end)
-    if ok then return true, "фейк-бомба выдана" end
-    return false, "ремоут ReplicateToy не найден"
+    if ok then
+        return true, Troll.Invisible and "невидимка ВКЛ (родная стелс-функция)" or "невидимка ВЫКЛ"
+    end
+    return false, "ремоут Stealth не найден"
+end
+
+---------------------------------------------------------------------
+-- Фейк глитч: персонаж «глючит» для всех (CFrame реплицируется)
+---------------------------------------------------------------------
+
+function Troll.SetFakeGlitch(value)
+    Troll.FakeGlitch = value and true or false
+    ConfigRef.Settings.FakeGlitch = Troll.FakeGlitch
+    if value then
+        glitchThread = task.spawn(function()
+            while Troll.FakeGlitch do
+                local character, humanoid, root = getCharacterParts()
+                if humanoid and root and humanoid.Health > 0 then
+                    local roll = math.random()
+                    if roll < 0.55 then
+                        -- микроТП вбок (реплицируется — все видят дёрганья)
+                        local offset = Vector3.new(
+                            (math.random() - 0.5) * 4.4,
+                            math.random() < 0.25 and 1.6 or 0,
+                            (math.random() - 0.5) * 4.4)
+                        root.CFrame = root.CFrame + offset
+                    elseif roll < 0.75 then
+                        -- спин
+                        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(90, 270)), 0)
+                    elseif roll < 0.9 then
+                        -- дёрганье анимаций: стоп/старт всех треков
+                        pcall(function()
+                            local animator = humanoid:FindFirstChildOfClass("Animator")
+                            if animator then
+                                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                    track:Stop(0)
+                                    task.wait(0.05)
+                                    track:Play(0.1)
+                                end
+                            end
+                        end)
+                    else
+                        -- фриз в воздухе
+                        root.Anchored = true
+                        task.wait(0.12 + math.random() * 0.2)
+                        if root.Parent then root.Anchored = false end
+                    end
+                end
+                task.wait(0.1 + math.random() * 0.2)
+            end
+        end)
+        return true, "фейк-глитч ВКЛ (все видят дёрганья)"
+    end
+    return true, "фейк-глитч ВЫКЛ"
 end
 
 ---------------------------------------------------------------------
@@ -268,12 +452,12 @@ function Troll.Configure(config, stealth)
     ConfigRef = config
     StealthRef = stealth
     Troll.Debug = config.Settings.DebugLogs == true
-    -- смерть/респавн снимает любые локальные эффекты
     connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
         if Troll.ActiveKind then
             Troll.ActiveKind = nil
             savedState = nil
             ghostParts = {}
+            fakeBombModel = nil
             note("fake death cleared by respawn")
         end
     end)
@@ -282,8 +466,11 @@ end
 function Troll.Shutdown()
     pcall(function() Troll.SetFakeDeath(nil) end)
     Troll.ActiveKind = nil
+    if Troll.FakeGlitch then pcall(function() Troll.SetFakeGlitch(false) end) end
     if emoteTrack then pcall(function() emoteTrack:Stop(0.1) end) emoteTrack = nil end
     if deathSound then pcall(function() deathSound:Destroy() end) deathSound = nil end
+    pcall(function() if fakeBombModel then fakeBombModel:Destroy(); fakeBombModel = nil end end)
+    pcall(function() if fakeKnifeDecals then for _, d in ipairs(fakeKnifeDecals) do d:Destroy() end end end)
     for _, connection in ipairs(connections) do
         pcall(function() connection:Disconnect() end)
     end

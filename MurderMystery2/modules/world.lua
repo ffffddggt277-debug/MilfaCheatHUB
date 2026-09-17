@@ -1,15 +1,14 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- World/round watcher v0.1.0.
+-- World/round watcher v0.3.0.
 --
--- Facts from research (FINDINGS_MM2.md):
---   * a round map is a workspace Model containing CoinContainer and/or Spawns
---     (workspace.Lobby is NOT a round map);
---   * coins live in <map>.CoinContainer, parts named "Coin_Server" carrying a
---     TouchTransmitter and an attribute Collected;
---   * a dropped sheriff gun spawns as a BasePart named "GunDrop" (anywhere in
---     workspace) — watched through DescendantAdded;
---   * round timer: Remotes.Extras.GetTimer (RemoteFunction, seconds left);
---   * lobby: workspace.Lobby (Y ≈ 505).
+-- Проверено по рабочим скриптам (KittyHub/W-Azeox/R3TH):
+--   * карта = Model в workspace с CoinContainer (имя НЕ "Lobby"); лобби тоже
+--     имеет CoinContainer — различаем по списку карт;
+--   * монеты: Model "Coin_Server" с CoinVisual.MainCoin ЛИБО голый BasePart;
+--   * GunDrop — BasePart где угодно в workspace (появляется при смерти
+--     шерифа), ловим DescendantAdded + рекурсивный поиск;
+--   * таймер: Remotes.Extras.GetTimer (RemoteFunction, секунды) и/или
+--     workspace.RoundTimerPart атрибут Time — пробуем оба канала.
 
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -34,13 +33,23 @@ end
 -- Map detection
 ---------------------------------------------------------------------
 
+local function hasCoinContainer(model)
+    local ok, found = pcall(function() return model:FindFirstChild("CoinContainer") end)
+    return ok and found ~= nil
+end
+
+local function hasSpawns(model)
+    local ok, found = pcall(function()
+        return model:FindFirstChild("Spawns") or model:FindFirstChild("Spawn")
+    end)
+    return ok and found ~= nil
+end
+
+-- Карта раунда: НЕ лобби, содержит CoinContainer и/или Spawns.
 local function looksLikeMap(model)
     if not model or not model:IsA("Model") then return false end
     if model.Name == "Lobby" then return false end
-    if model:FindFirstChild("CoinContainer") then return true end
-    if model:FindFirstChild("Spawns") or model:FindFirstChild("Spawn") then return true end
-    if model:FindFirstChild("Base") or model:FindFirstChild("Map") then return true end
-    return false
+    return hasCoinContainer(model) or hasSpawns(model)
 end
 
 local function scanForMap()
@@ -71,45 +80,41 @@ function World.GetLobby()
 end
 
 function World.IsInRound()
-    local map = World.GetMap()
-    if not map then return false end
-    local timer = World.GetTimer()
-    if timer == nil then return true end
-    return timer > 1
+    return World.GetMap() ~= nil
 end
 
+-- Таймер в два канала: сначала родной ремоут, затем атрибут RoundTimerPart.
 function World.GetTimer()
-    if not World.TimerRemote then
+    if not World.TimerRemote or not World.TimerRemote.Parent then
         pcall(function()
-            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-            local extras = remotes and remotes:FindFirstChild("Extras")
-            World.TimerRemote = extras and extras:FindFirstChild("GetTimer") or nil
-            if not World.TimerRemote then
-                World.TimerRemote = ReplicatedStorage:FindFirstChild("GetTimer") or nil
-            end
+            World.TimerRemote = ReplicatedStorage:FindFirstChild("GetTimer", true)
         end)
     end
-    if not World.TimerRemote then return nil end
-    local ok, seconds = pcall(function() return World.TimerRemote:InvokeServer() end)
-    if ok and type(seconds) == "number" then return seconds end
+    if World.TimerRemote then
+        local ok, seconds = pcall(function() return World.TimerRemote:InvokeServer() end)
+        if ok and type(seconds) == "number" then return seconds end
+    end
+    -- Fallback: workspace.RoundTimerPart:GetAttribute("Time")
+    local ok, value = pcall(function()
+        local part = Workspace:FindFirstChild("RoundTimerPart")
+        return part and part:GetAttribute("Time") or nil
+    end)
+    if ok and type(value) == "number" then return value end
     return nil
 end
 
--- Map center for teleports: bounding box of the map model.
+-- Центр карты для телепортов: bounding box модели.
 function World.GetMapCenter()
     local map = World.GetMap()
     if not map then return nil end
-    local ok, center, size = pcall(function()
-        local bounds = map:GetBoundingBox()
-        return bounds.Position, bounds.Size
+    local ok, center = pcall(function()
+        return map:GetBoundingBox().Position
     end)
-    if ok and center then
-        return center, size
-    end
+    if ok and center then return center end
     return nil
 end
 
--- Lobby spawn position (research: ~(14.7, 505.2, -61.3)).
+-- Позиция спавна в лобби (ресёрч: ~(14.7, 505.2, -61.3)).
 function World.GetLobbyPosition()
     local lobby = World.GetLobby()
     local spawns = lobby and (lobby:FindFirstChild("Spawns") or lobby:FindFirstChild("Spawn"))
@@ -122,20 +127,24 @@ function World.GetLobbyPosition()
     return Vector3.new(14.72, 506.2, -61.29)
 end
 
--- Round map spawn position (first Spawn/PlayerSpawn descendant).
+-- Спавн карты раунда (первый Spawn/PlayerSpawn в потомках).
 function World.GetMapSpawn()
     local map = World.GetMap()
     if not map then return nil end
-    local found = nil
+    local spawns = map:FindFirstChild("Spawns") or map:FindFirstChild("Spawn")
+    if spawns then
+        local base = spawns:IsA("BasePart") and spawns or spawns:FindFirstChildWhichIsA("BasePart", true)
+        if base then return base.Position + Vector3.new(0, 3.5, 0) end
+    end
     pcall(function()
         for _, descendant in ipairs(map:GetDescendants()) do
             if descendant:IsA("BasePart") and (descendant.Name == "Spawn" or descendant.Name == "PlayerSpawn") then
-                found = descendant
+                spawns = descendant
                 break
             end
         end
     end)
-    if found then return found.Position + Vector3.new(0, 3.5, 0) end
+    if spawns and spawns:IsA("BasePart") then return spawns.Position + Vector3.new(0, 3.5, 0) end
     local center = World.GetMapCenter()
     if center then return center + Vector3.new(0, 6, 0) end
     return nil
@@ -145,26 +154,33 @@ end
 -- Coins
 ---------------------------------------------------------------------
 
--- Collect reachable coins. `includeLobby` adds lobby coins (they exist too).
+-- Часть монеты: голый BasePart или Model(Coin_Server)/CoinVisual/MainCoin.
+local function coinPart(obj)
+    if obj:IsA("BasePart") then return obj end
+    local ok, result = pcall(function()
+        local visual = obj:FindFirstChild("CoinVisual")
+        if visual then
+            local main = visual:FindFirstChild("MainCoin")
+            if main and main:IsA("BasePart") then return main end
+        end
+        return obj:FindFirstChildWhichIsA("BasePart", true)
+    end)
+    return ok and result or nil
+end
+
+-- Собираем монеты; includeLobby добавляет монеты лобби.
 function World.FindCoins(includeLobby)
     local coins = {}
-    local character = nil
-    pcall(function()
-        local player = game:GetService("Players").LocalPlayer
-        character = player and player.Character
-    end)
-
     local function harvest(container)
         if not container then return end
         for _, coin in ipairs(container:GetChildren()) do
-            if coin.Name == "Coin_Server" then
+            local lowered = string.lower(coin.Name)
+            if string.find(lowered, "coin", 1, true) then
                 local collected = false
                 pcall(function() collected = coin:GetAttribute("Collected") == true end)
                 if not collected then
-                    local part = coin:IsA("BasePart") and coin or coin:FindFirstChildWhichIsA("BasePart", true)
-                    if part then
-                        coins[#coins + 1] = part
-                    end
+                    local part = coinPart(coin)
+                    if part then coins[#coins + 1] = part end
                 end
             end
         end
@@ -189,7 +205,7 @@ function World.GetGunDrop()
     if World.GunDrop and World.GunDrop.Parent then
         return World.GunDrop
     end
-    local found = nil
+    local found
     pcall(function() found = Workspace:FindFirstChild("GunDrop", true) end)
     if found then World.GunDrop = found end
     return found
@@ -211,13 +227,12 @@ function World.Start()
     if World._started then return end
     World._started = true
 
-    -- GunDrop appears anywhere: watch descendants.
+    -- GunDrop появляется где угодно: следим за потомками.
     connections[#connections + 1] = Workspace.DescendantAdded:Connect(function(descendant)
         if descendant.Name == "GunDrop" then
             World.GunDrop = descendant
             note("GunDrop spawned")
             for _, callback in ipairs(gunDropCallbacks) do pcall(callback, descendant) end
-            -- auto-clear when removed
             task.spawn(function()
                 while descendant and descendant.Parent do task.wait(0.5) end
                 if World.GunDrop == descendant then World.GunDrop = nil end
@@ -225,7 +240,7 @@ function World.Start()
         end
     end)
 
-    -- Map round boundaries.
+    -- Границы раунда: появление/удаление карты.
     connections[#connections + 1] = Workspace.ChildAdded:Connect(function(child)
         if looksLikeMap(child) then
             World.CurrentMap = child
@@ -241,7 +256,6 @@ function World.Start()
         if child == World.GunDrop then World.GunDrop = nil end
     end)
 
-    -- Initial scan once the game replicated.
     task.spawn(function()
         if not game:IsLoaded() then game.Loaded:Wait() end
         task.wait(2)

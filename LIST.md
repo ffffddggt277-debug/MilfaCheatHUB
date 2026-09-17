@@ -267,10 +267,10 @@ X-ориентиры: Forest `602`, Lake `746`, Desert `785`, Jungle `936`, Snow
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/main.lua?v=0.6.2"))()
 ```
 
-### Murder Mystery 2 (v0.2.0)
+### Murder Mystery 2 (v0.3.0)
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.2.0"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.3.0"))()
 ```
 
 ## Murder Mystery 2
@@ -278,10 +278,40 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/Mi
 - PlaceId: `142823291`;
 - папка: `/MurderMystery2/`;
 - точка входа: `/MurderMystery2/main.lua`;
-- текущая версия: `0.2.0`;
+- текущая версия: `0.3.0`;
 - стиль GUI и CALM-доктрина — как в Steal-A-Egg v0.6.2 (тот же ui.lua/stealth.lua/anticheat.lua);
 - ресёрч: 9 открытых хабов разобраны (KittyHub, StyearX, xsync69, fogyhub, CGS Mobile,
-  zzerexx Utilities, v1ain, TrixAde, IqokczHub), конспект — `research/mm2_repos/FINDINGS_MM2.md`.
+  zzerexx Utilities, v1ain, TrixAde, IqokczHub); v0.3.0 — сверка с живыми исходниками
+  KittyHub/W-Azeox/R3TH/MM2 Mods (GitHub code search).
+
+### Список функций 0.3.0 — БОЛЬШОЙ ФИКС по фото-разметке + новое
+
+ПРИЧИНА «КРАСНЫХ КРУГОВ» (аудит 8 фото от пользователя + разбор чужих скриптов):
+`GetPlayerData` искался НЕ рекурсивно, а лежит он в `Remotes.Extras` → роли никогда
+не определялись («роль: ?»), всё, что зависит от ролей, было мёртвым. Плюс удар ножом
+шёл через Events.KnifeStabbed (не наносит урон в актуальной MM2), эмоции — через
+несуществующий Remotes.Misc.PlayEmote. Всё переписано по рабочим паттернам:
+
+- РОЛИ: рекурсивный резолвер с переподключением (ремоуты переезжают), пуш
+  PlayerDataChanged в ОБОИХ форматах (таблица целиком / одна запись), собственный
+  автоопрос раз в 2с, фолбэк по вынутому ножу/пистолету, герой = мирный с пистолетом.
+- БОЙ: удар ножа = Stab("Down")+"Up" (пара, как в KittyHub/R3TH); аура и KILL ALL
+  через ТП-стаб (мигнуть за спину → удар → вернуть тело); выстрел шерифа:
+  CreateBeam(1, pos, "AH2") с переключением тега AH2/AH + фолбэк ShootGun;
+  бросок ножа ОРИЕНТИРОВАННЫМ CFrame (иначе летит мимо); MurderAim/SheriffAim с LOS.
+- ТРОЛЛИНГ (по образцам популярных): ФЕЙК НОЖ — спрей SprayPaint рисует декаль ножа
+  на руке (реплицируется сервером, ВИДНО ВСЕМ; метод из MM2 Mods); ФЕЙК ГЛИТЧ —
+  персонаж «глючит» для всех (микроТП/спины/дёрганья анимаций); НЕВИДИМКА — родной
+  Remotes.Gameplay.Stealth(true/false); эмоции — Remotes.PlayEmote (рекурсивно) +
+  FireServer/Fire + локальный фолбэк; фейк-пистолет (родной, видно всем), фейк-бомба —
+  локальная игрушка у ног.
+- GUI: БЕТА-вкладка УДАЛЕНА; прогноз победы — ЖИВОЕ ПОЛЕ на вкладке ИГРОКИ («Кто
+  выиграет» + «За счёт чего»); быстрые действия собраны в ОДНУ квадратную плавающую
+  кнопку «М» (ВЫСТРЕЛ/НОЖ/ПИСТ/ФЕЙК-СМЕРТЬ/ФЕЙК НОЖ/ТП ЛОББИ) — панель открывается
+  тапом, кнопка перетаскивается; лишние кнопки и тексты убраны.
+- ESP: мгновенное обновление на вход/выход/респавн любого игрока (события, а не только
+  тик); таймер в два канала (GetTimer + RoundTimerPart.Time); монеты поддерживают
+  CoinVisual.MainCoin; анти-АФК со страховочным пульсом каждые 60с.
 
 ### Список функций 0.2.0 — новое (поверх 40+ из 0.1.0)
 
@@ -329,23 +359,73 @@ TP в лобби, TP на карту, TP над картой.
 SafeTeleport/glide + скорость, человеческие задержки, DebugLogs, PANIC, диагностика,
 проверка ремоутов.
 
-### Техкарта MM2 (из ресёрча, верифицировано живой игрой сообществом)
+### Техкарта MM2 (v0.3.0 — сверено с живыми исходниками KittyHub/W-Azeox/R3TH/MM2 Mods)
 
-- Роли: `ReplicatedStorage.GetPlayerData:InvokeServer()` → `{[name] = {Role, Killed, Dead}}`;
-  пуш `Remotes.Gameplay.PlayerDataChanged`; фолбэк — Knife/Gun в Character/Backpack;
-  Hero = мирный с пистолетом. Своя роль латчится на раунд.
-- Монеты: `<карта>.CoinContainer`, дети `Coin_Server` (+ атрибут Collected);
-  сбор — `firetouchinterest(HRP, coin, 0/1)`; сумка — `Remotes.Gameplay.CoinCollected (cur, max)`.
-- Пистолет: `workspace.GunDrop` (DescendantAdded), маньяк поднять НЕ может (сервер).
-- Убийство: `Knife.Events.KnifeStabbed:FireServer()` + `HandleTouched:FireServer(цель-HRP)`;
-  выстрел: `Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(1, pos, "AH2")` — хит-тест на сервере.
-- Раунды: карта = workspace-Model с CoinContainer/Spawns (Lobby не считается);
-  таймер `Remotes.Extras.GetTimer:InvokeServer()`; лобби Y≈505 (14.72, 505.19, -61.29).
+- Роли: `GetPlayerData` — RemoteFunction, лежит НЕ в корне (искать рекурсивно,
+  подтверждено R3TH: `Remotes.Extras.GetPlayerData`); `InvokeServer()` →
+  `{[name] = {Role, Killed, Dead}}`; пуш `Remotes.Gameplay.PlayerDataChanged` шлёт
+  либо всю таблицу, либо (имя, запись) — обрабатывать ОБА; фолбэк — Knife/Gun в
+  Character (вынутое видно всем) + свой Backpack; Hero = мирный с пистолетом;
+  своя роль латчится на раунд.
+- Убийство: `Character.Knife.Stab:FireServer("Down")` и через ~0.06с `"Up"` (пара);
+  Events.KnifeStabbed/HandleTouched в актуальной игре урон НЕ реплицируют; убийство
+  на дистанции = ТП-стаб (мигнуть к цели → stab → мигнуть обратно) — так делают
+  все рабочие ауры.
+- Выстрел: `Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(1, pos, тег)` —
+  теги "AH2" (новые) / "AH" (старые), переключать при отказе; фолбэк
+  `Gun.KnifeServer.ShootGun:InvokeServer(1, 0, "AH")`; хит-тест на сервере; перед
+  выстрелом экипировать пистолет (сервер отбрасывает выстрелы не из руки).
+- Бросок: `Character.Knife.Events.KnifeThrown:FireServer(fromCF, toCF)`, fromCF —
+  ОРИЕНТИРОВАННЫЙ `CFrame.new(from, to)`, иначе нож летит по мировой оси.
+- Монеты: `<карта>.CoinContainer`, дети `Coin_Server` — голый BasePart ЛИБО
+  Model с `CoinVisual.MainCoin`; сбор — `firetouchinterest`/касание; карта =
+  workspace-Model с CoinContainer (не Lobby); таймер: `Remotes.Extras.GetTimer`
+  и/или `workspace.RoundTimerPart` атрибут `Time`.
+- Пистолет: `workspace.GunDrop` (BasePart где угодно; DescendantAdded);
+  маньяк поднять НЕ может (сервер).
+- Троллинг-ремоуты: `Remotes.Gameplay.FakeGun:FireServer(true)` (видно всем),
+  `Remotes.Gameplay.Stealth:FireServer(true/false)` (невидимка),
+  `Remotes.Extras.ReplicateToy:InvokeServer("SprayPaint")` (игрушка, декаль —
+  спрей `SprayPaint.Remote:FireServer(imageId, NormalId, size, part, cframe)`),
+  эмоции `Remotes.PlayEmote` (RemoteEvent сразу под Remotes).
 - Клиент-клин: трупы `Raggy`, барьеры `GlitchProof`.
 - Античит: в 9 хабах обходов НЕ найдено — серверных проверок движения нет;
   риски: клиентский Roblox-античит (зависит от экзекьютора) и репорты игроков.
 
 ## Журнал
+
+### 2026-09-17 — MM2 0.3.0 (БОЛЬШОЙ ФИКС: роли/бой/троллинг по фото-разметке)
+
+- Входные данные: 8 фото от пользователя с кругами (зелёный = работает, красный = нет)
+  + dev-console снимок: diag показал пустых murderer/sheriff → отправная точка аудита.
+- Ресёрч через GitHub Code Search API: вытащены и разобраны живые исходники
+  KittyHub (352КБ), W-Azeox (87КБ), MM2 Mods/fun.lua (258КБ), R3TH PRIV, zzerexx
+  Utilities, retpirato MM2. Ключевые подтверждения: GetPlayerData ищется РЕКУРСИВНО
+  (лежит в Remotes.Extras), удар = Knife.Stab("Down"/"Up")-пара, аура = ТП-стаб,
+  выстрел = CreateBeam(1,pos,"AH2"|"AH") + ShootGun фолбэк, эмоции = Remotes.PlayEmote,
+  фейк нож = SprayPaint-декаль на руке (видно всем), невидимка = Gameplay.Stealth,
+  FakeGun:FireServer(true) — родной, ReplicateToy принимает "SprayPaint" ("FakeBomb" —
+  несуществующий аргумент v0.2.0).
+- roles.lua v0.3.0: рекурсивный резолвер + переподключение, обе формы пуша,
+  собственный автоопрос 2с (фоновый), антидребезг поиска 15с, RemotesFound в diag.
+- world.lua v0.3.0: карта строго по CoinContainer/Spawns, таймер 2 канала
+  (GetTimer + RoundTimerPart.Time), монеты CoinVisual.MainCoin.
+- combat.lua v0.3.0: Stab-пара + ТП-стаб (аура и KILL ALL; шериф — очередь выстрелов),
+  тег-латч AH2/AH, ShootGun фолбэк, ориентированный бросок, LOS сохранён.
+- troll.lua v0.3.0: PlayEmote фикс (рекурсивно + FireServer/Fire), ФейкНож (спрей),
+  ФейкГлитч (микроТП/спины/статтер — видно всем), Невидимка (Stealth), фейк-бомба
+  переработана в локальную игрушку (ReplicateToy("FakeBomb") был мёртвым).
+- mm2esp.lua: мгновенный рефреш по PlayerAdded/PlayerRemoving/респавну (события).
+- movement.lua: анти-АФК страховочный пульс 60с. farm.lua: рекурсивный CoinCollected.
+- ui.lua: AddQuickMenu — квадратная плавающая кнопка «М» с панелью действий,
+  перетаскивание пальцем/мышью, панель следует за кнопкой.
+- features.lua v0.3.0: Бета-вкладка удалена; прогноз победы перенесён живым полем в
+  ИГРОКИ («Кто выиграет» + «За счёт чего», авто-пересчёт); 3 FAB-кнопки заменены
+  быстрым меню; убраны лишние кнопки/тексты (Обновить роли, Сброс счётчика, Проверить
+  ремоуты, длинные пояснения); вкладки теперь: ИГРОКИ/АВТО/ПЕРСОНАЖ/ВИЗУАЛ/БОЙ/ТРОЛЛИНГ/СИСТЕМА.
+- config.lua/main.lua: 0.3.0, новые настройки (ShowQuickMenu, FakeGlitch, Invisible,
+  KillAllRadius), KnownEndpoints уточнены, diag показывает ремоуты и свою роль.
+- Сборка: lua_check 30/30 PASS; bundle 15 модулей 228.1 КБ; cache-buster ?v=0.3.0.
 
 ### 2026-09-17 — MM2 0.2.0 (AIM&TROLL: тихие прицелы, уклонение, фейк-смерти, прогноз)
 

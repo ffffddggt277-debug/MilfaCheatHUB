@@ -256,9 +256,21 @@ function Movement.SetAntiAFK(value)
                 virtualUser:CaptureController()
                 virtualUser:ClickButton2(Vector2.new())
             end)
-            note("anti-afk pulse")
+            note("anti-afk pulse (idle)")
         end)
         connections[#connections + 1] = antiAFKConnection
+        -- страховочный пульс каждые 60 секунд (не все экзекьюторы шлют Idled)
+        task.spawn(function()
+            while Movement.AntiAFKEnabled do
+                task.wait(60)
+                if not Movement.AntiAFKEnabled then break end
+                pcall(function()
+                    virtualUser:CaptureController()
+                    virtualUser:ClickButton2(Vector2.new())
+                end)
+                note("anti-afk pulse (periodic)")
+            end
+        end)
     elseif antiAFKConnection then
         pcall(function() antiAFKConnection:Disconnect() end)
         antiAFKConnection = nil

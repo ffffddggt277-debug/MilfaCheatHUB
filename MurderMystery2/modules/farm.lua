@@ -256,9 +256,8 @@ function Farm.Configure(config, world, stealth)
     Farm.Debug = config.Settings.DebugLogs == true
 
     pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-        local gameplay = remotes and remotes:FindFirstChild("Gameplay")
-        coinEvent = gameplay and gameplay:FindFirstChild("CoinCollected") or nil
+        -- ремоуты переезжают между апдейтами — ищем рекурсивно
+        coinEvent = ReplicatedStorage:FindFirstChild("CoinCollected", true)
         if coinEvent then
             coinEvent.OnClientEvent:Connect(function(player, current, max)
                 if current ~= nil then Farm.BagCur = tonumber(current) end
