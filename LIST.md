@@ -261,16 +261,16 @@ X-ориентиры: Forest `602`, Lake `746`, Desert `785`, Jungle `936`, Snow
 
 ## Запуск
 
-### Steal An Egg (v0.6.2)
+### Steal An Egg (v0.6.3)
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/main.lua?v=0.6.2"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/main.lua?v=0.6.3"))()
 ```
 
-### Murder Mystery 2 (v0.3.0)
+### Murder Mystery 2 (v0.3.1)
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.3.0"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.3.1"))()
 ```
 
 ## Murder Mystery 2
@@ -278,7 +278,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/Mi
 - PlaceId: `142823291`;
 - папка: `/MurderMystery2/`;
 - точка входа: `/MurderMystery2/main.lua`;
-- текущая версия: `0.3.0`;
+- текущая версия: `0.3.1`;
 - стиль GUI и CALM-доктрина — как в Steal-A-Egg v0.6.2 (тот же ui.lua/stealth.lua/anticheat.lua);
 - ресёрч: 9 открытых хабов разобраны (KittyHub, StyearX, xsync69, fogyhub, CGS Mobile,
   zzerexx Utilities, v1ain, TrixAde, IqokczHub); v0.3.0 — сверка с живыми исходниками
@@ -393,6 +393,29 @@ SafeTeleport/glide + скорость, человеческие задержки
   риски: клиентский Roblox-античит (зависит от экзекьютора) и репорты игроков.
 
 ## Журнал
+
+### 2026-09-17 — MM2 0.3.1 + SAE 0.6.3 (иконка репо в GUI + полный ре-аудит)
+
+- ИКОНКА: `icon.png` из корня репо не использовался — в MM2-конфиге вообще не было
+  `IconUrl`/`LoadIcon` (флаг был только в SAE и там = false). Теперь включён в ОБЕИХ
+  играх: логотип в лоадере, сайдбаре, лупе-свёртывании И квадратной быстрой кнопке
+  (вместо текста «М», фолбэк сохранён). Загрузчик усилен: проверка PNG-сигнатуры и
+  кода ответа (мусор в кэш не пишется), ре-скачивание если кэш не принят движком,
+  зеркало jsdelivr на случай блокировки raw (мобильные операторы).
+- roles.lua: ИСПРАВЛЕН СЕРЬЁЗНЫЙ БАГ — поле `Killed` трактовалось как «мёртв»
+  (правильно: Killed = «убил кого-то», Dead = «мёртв») → маньяк ПОСЛЕ первого
+  убийства исчезал с ESP и из аимов. Плюс: цикл опроса теперь перезапускаем после
+  Shutdown, переподписка пуша гасит старый коннект.
+- troll.lua: ФейкНож переписан ТОЧНО по оригиналу MM2 Mods (скачан исходник):
+  id 15093138669 на NormalId.Right + id 15096522641 на NormalId.Left (было оба на
+  Right), тул в Character прямым parent + фолбэк EquipTool. ФейкГлитч: при выключении
+  во время «фриза в воздухе» снимается Anchor (иначе персонаж зависал навсегда).
+- combat.lua: счёт убийств честный — проверка Health цели после удара/выстрела,
+  а не «отправили = убили».
+- mm2esp.lua: выключение трейсеров сносит только Beam/аттачменты (ESP больше не
+  мигает целиком).
+- Проверка: lua_check 30/30 PASS; bundle MM2 234.3 КБ (15 модулей), SAE 172.6 КБ;
+  commit 7cd581b запушен; RAW ?v=0.3.1 / ?v=0.6.3 = HTTP 200, версии подтверждены.
 
 ### 2026-09-17 — MM2 0.3.0 (БОЛЬШОЙ ФИКС: роли/бой/троллинг по фото-разметке)
 
