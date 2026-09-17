@@ -1,24 +1,18 @@
--- MilfaCheatHUB • Steal An Egg
--- Silent modular entry point v0.6.2 (CALM).
+-- MilfaCheatHUB • Murder Mystery 2
+-- Silent modular entry point v0.1.0 (CALM).
 --
--- Evidence timeline:
---   v0.4.0 crashed BEFORE creating any GUI or hook and STILL got kicked ~5s
---   later — the only traces were console output (LogService is readable by
---   game scripts via GetLogHistory) and getgenv keys with the word "Cheat".
---   v0.6.0 (PlayerGui GUI, zero hooks) drew BAC-7517. v0.6.1 printed one
---   line containing the word "GUI" — still a LogHistory keyword.
--- v0.6.2 ships CALM:
---   * the ONLY console output is the bare version number (no words at all)
---   * session state lives in getgenv under ONE random key, no signature words
---   * GUI mounts IMMEDIATELY (HeadlessLoad=false default): visible GUI with
---     zero hooks is exactly the profile of scripts that survive in this game;
---     mount is hidden-first (gethui/CoreGui), PlayerGui only as last resort
---   * HeadlessLoad=true stays available as an opt-in (summon: 3-finger tap /
---     RightControl / chat command)
+-- Same doctrine as Steal-A-Egg v0.6.2 (proven load profile):
+--   * the ONLY console output is the bare version number (no words — the log
+--     is readable by game scripts via GetLogHistory);
+--   * session state lives in getgenv under ONE random key, no signature words;
+--   * GUI mounts IMMEDIATELY (HeadlessLoad=false default), hidden-first
+--     (gethui/CoreGui), PlayerGui only as last resort;
+--   * zero hooks at load; everything aggressive stays opt-in;
+--   * HeadlessLoad=true summons via 3-finger tap / RightControl / chat.
 
-local EXPECTED_PLACE_ID = 107778070777162
-local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.6.2"
+local EXPECTED_PLACE_ID = 142823291
+local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/"
+local VERSION = "0.1.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -29,8 +23,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local env = (getgenv and getgenv()) or _G
 
--- Wipe legacy signature keys left by older versions (they persist in getgenv
--- for the whole server session and are readable by keyword scans).
+-- Wipe legacy signature keys left by older versions.
 do
     local legacy = {
         "MilfaCheatHUBSession", "MilfaCheatHUBCleanup", "MilfaPanic",
@@ -42,8 +35,7 @@ do
     end
 end
 
--- Orphan cleanup: previous MUTE sessions live under random MH<key> tables
--- marked with __mh. Kill their leftovers, then drop the keys entirely.
+-- Orphan cleanup: previous sessions live under random MH<key> tables marked __mh.
 do
     for key, value in pairs(env) do
         if type(key) == "string" and type(value) == "table" and value.__mh then
@@ -53,7 +45,7 @@ do
     end
 end
 
--- Random registry key: new every run, no dictionary words, nothing to grep for.
+-- Random registry key: new every run, no dictionary words.
 local RANDOM_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 math.randomseed(os.time() + math.floor(os.clock() * 100000))
 local function randomString(length)
@@ -82,9 +74,8 @@ local state = {
     Cleaned = false,
 }
 
--- Loaded lazily / assigned during startup.
 local Config, Stealth, AntiCheat, UI, Features
-local ScannerM, NetworkM, RarityM, PositionsM, ESPM, EggsM, AutomationM, PlayerM
+local RolesM, NetworkM, WorldM, ESPM, FarmM, CombatM, MovementM, VisualsM
 
 local DEBUG = false
 local function log(...)
@@ -107,9 +98,6 @@ local function cleanup()
     state.Cleaned = true
 
     if state.Features then pcall(function() state.Features:Destroy() end) end
-    -- Headless edge case: мир собран, но UI не успел — чистим напрямую.
-    if state.Automation and state.Automation.Destroy then pcall(function() state.Automation:Destroy() end) end
-    if state.Player and state.Player.Destroy then pcall(function() state.Player:Destroy() end) end
     if state.ESP then pcall(function() state.ESP:Destroy() end) end
     if state.App then pcall(function() state.App:Destroy() end) end
     if state.Loader then pcall(function() state.Loader:Destroy() end) end
@@ -120,8 +108,6 @@ local function cleanup()
     state.ESP = nil
     state.App = nil
     state.Loader = nil
-    state.Automation = nil
-    state.Player = nil
 end
 
 reg.Cleanup = function()
@@ -131,9 +117,7 @@ reg.Cleanup = function()
 end
 reg.Panic = reg.Cleanup
 
--- Bundle sources MUST be declared BEFORE loadModule: otherwise loadModule
--- resolves the name as a global (always nil) and silently falls back to
--- 14 per-file fetches. This exact bug shipped in v0.6.0.
+-- Bundle sources MUST be declared BEFORE loadModule (v0.6.0 regression guard).
 local bundleSources
 
 local function loadModule(relativePath)
@@ -155,7 +139,6 @@ local function loadModule(relativePath)
         error("Не удалось загрузить модуль: " .. relativePath, 0)
     end
 
-    -- Neutral chunk name: no repo words, nothing for keyword scans to bite.
     local chunk, compileError = loadstring(source, "@mh/" .. relativePath)
     if not chunk then
         error("Ошибка кода " .. relativePath .. ": " .. tostring(compileError), 0)
@@ -168,8 +151,7 @@ local function loadModule(relativePath)
     return module
 end
 
--- GHOST network profile: ONE request for all modules. Silent fallback to
--- per-module fetches keeps the loader working during rollouts.
+-- CALM network profile: ONE request for all modules.
 local function loadBundle()
     local requestOk, result = pcall(game.HttpGet, game, BASE_URL .. "bundle.lua?v=" .. VERSION)
     if not requestOk or type(result) ~= "string" or #result < 50 then return false end
@@ -181,7 +163,6 @@ local function loadBundle()
     return true
 end
 
--- Defined BEFORE the xpcall block (v0.4.0 regression guard).
 local function loadingStep(progress, text)
     if state.Loader and state.Loader.Set then
         pcall(state.Loader.Set, state.Loader, progress, text)
@@ -189,42 +170,50 @@ local function loadingStep(progress, text)
     task.wait()
 end
 
--- Builds every engine instance (scanner, network, eggs, automation...). No UI,
--- no loops here. Used by the classic path immediately and by the headless path
--- on first GUI summon.
+-- Builds every engine instance. No UI, no aggressive counters here.
 local function buildWorld()
     if state.WorldBuilt then return true end
 
-    loadingStep(0.25, "Загружаем сканер...")
-    local scanner = ScannerM.new(Config)
+    loadingStep(0.22, "Определяем роли...")
+    local roles = RolesM
+    roles.Debug = DEBUG
 
     loadingStep(0.30, "Проверяем Networking...")
     local network = NetworkM.new(Config)
-
-    loadingStep(0.38, "Определяем редкости...")
-    local rarity = RarityM
-
-    loadingStep(0.46, "Определяем точки...")
-    local positions = PositionsM.new(Config, scanner)
-
-    loadingStep(0.54, "Подготавливаем ESP...")
-    state.ESP = ESPM.new(Config, rarity, Stealth)
-
-    loadingStep(0.62, "Запускаем движок яиц...")
-    local eggs = EggsM.new(Config, scanner, network, rarity)
-
-    loadingStep(0.78, "Подключаем автоматизацию...")
-    local automation = AutomationM.new(Config, eggs, network, positions, scanner, rarity, Stealth)
-    state.Automation = automation
-
-    loadingStep(0.86, "Настраиваем персонажа...")
-    local player = PlayerM.new(Config, Stealth)
-    state.Player = player
-
-    state.Scanner = scanner
     state.Network = network
-    state.Positions = positions
-    state.Eggs = eggs
+
+    loadingStep(0.40, "Сканируем мир...")
+    local world = WorldM
+    world.Debug = DEBUG
+    world.Start()
+    state.World = world
+
+    loadingStep(0.50, "Готовим ESP...")
+    ESPM.Configure(Config, roles, world, Stealth)
+    local esp = ESPM
+    state.ESP = esp
+
+    loadingStep(0.60, "Настраиваем фарм...")
+    local farm = FarmM
+    farm.Configure(Config, world, Stealth)
+    state.Farm = farm
+
+    loadingStep(0.70, "Настраиваем бой...")
+    local combat = CombatM
+    combat.Configure(Config, roles, Stealth)
+    state.Combat = combat
+
+    loadingStep(0.80, "Настраиваем движение...")
+    local movement = MovementM
+    movement.Configure(Config, Stealth)
+    movement.WorldRef = world
+    state.Movement = movement
+
+    loadingStep(0.88, "Настраиваем визуал...")
+    local visuals = VisualsM
+    visuals.Configure(Config)
+    state.Visuals = visuals
+
     state.WorldBuilt = true
     return true
 end
@@ -245,9 +234,8 @@ local function summonGui()
         state.App:SetCloseCallback(reg.Cleanup)
 
         loadingStep(0.93, "Подключаем функции...")
-        state.Features = Features.new(Config, state.App, state.Scanner, state.Network,
-            state.Positions, state.ESP, state.Eggs, state.Automation, state.Player,
-            RarityM, alive, Stealth)
+        state.Features = Features.new(Config, state.App, RolesM, state.Network, state.World,
+            state.ESP, state.Farm, state.Combat, state.Movement, state.Visuals, alive, Stealth)
         state.Features:Build()
         state.Features:Start()
 
@@ -263,15 +251,19 @@ reg.Diag = function()
     print("[mh] diag v" .. VERSION)
     print("  key: " .. REGISTRY_KEY)
     print("  mount: " .. tostring(Stealth and Stealth.MountKind or "none"))
-    print("  bac: " .. tostring(AntiCheat and AntiCheat.Summary and AntiCheat.Summary() or "n/a"))
     print("  headless: " .. tostring(Config and Config.Settings.HeadlessLoad))
     print("  world: " .. tostring(state.WorldBuilt))
-    if Stealth and Stealth.FindAntiCheatScripts then
-        local found = Stealth.FindAntiCheatScripts()
-        print("  ac candidates (" .. #found .. "):")
-        for _, script_ in ipairs(found) do
-            print("    - " .. script_.GetFullName())
-        end
+    if RolesM then
+        local murderer = RolesM.FindByRole("Murderer")
+        local sheriff = RolesM.FindByRole("Sheriff")
+        print("  murderer: " .. table.concat(murderer, ", "))
+        print("  sheriff: " .. table.concat(sheriff, ", "))
+    end
+    if WorldM then
+        local map = WorldM.GetMap()
+        print("  map: " .. tostring(map and map.Name or "нет"))
+        print("  timer: " .. tostring(WorldM.GetTimer() or "n/a"))
+        print("  gundrop: " .. tostring(WorldM.GetGunDrop() ~= nil))
     end
 end
 
@@ -290,36 +282,31 @@ local success, failure = xpcall(function()
     Stealth.Debug = DEBUG
     Stealth.Registry = reg
 
-    loadingStep(0.10, "Режим MUTE (без хуков)...")
+    loadingStep(0.10, "Режим CALM (без хуков)...")
     AntiCheat = loadModule("modules/anticheat.lua")
     state.AntiCheat = AntiCheat
     Stealth.AntiCheat = AntiCheat
     task.spawn(function()
-        -- MUTE: NOTHING is hooked unless the user explicitly opts in.
+        -- CALM: NOTHING is hooked unless the user explicitly opts in.
         AntiCheat.Init(Stealth, Config.Settings, Config.Settings.BacAutoBypass == true)
     end)
 
-    -- Module sources are pulled up-front (bundle makes this one fetch); heavy
-    -- instances are built later by buildWorld().
+    RolesM = loadModule("modules/roles.lua")
+    NetworkM = loadModule("modules/network.lua")
+    WorldM = loadModule("modules/world.lua")
+    ESPM = loadModule("modules/mm2esp.lua")
+    FarmM = loadModule("modules/farm.lua")
+    CombatM = loadModule("modules/combat.lua")
+    MovementM = loadModule("modules/movement.lua")
+    VisualsM = loadModule("modules/visuals.lua")
     UI = loadModule("modules/ui.lua")
     Features = loadModule("modules/features.lua")
-    ScannerM = loadModule("modules/scanner.lua")
-    NetworkM = loadModule("modules/network.lua")
-    RarityM = loadModule("modules/rarity.lua")
-    PositionsM = loadModule("modules/positions.lua")
-    ESPM = loadModule("modules/esp.lua")
-    EggsM = loadModule("modules/eggs.lua")
-    AutomationM = loadModule("modules/automation.lua")
-    PlayerM = loadModule("modules/player.lua")
 
     if Config.Settings.HeadlessLoad ~= false then
-        -- MUTE headless: no GUI, no loader, no instances, no loops. The only
-        -- artifact in this game session is one bare version number — no words
-        -- for a LogHistory keyword scan to bite.
+        -- Headless: no GUI, no loops; summon via 3-finger tap / RightControl / chat.
         print(VERSION)
     else
-        -- Classic path (default): loader window + immediate build. No text is
-        -- printed; the visible window itself is the load confirmation.
+        -- Classic path (default): loader window + immediate build.
         state.Loader = UI.ShowLoader(Config, Stealth)
         loadingStep(0.12, "CALM: " .. tostring(Stealth.GuiMount) .. (bundleOk and " • bundle" or " • файлы") .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
 
@@ -330,9 +317,8 @@ local success, failure = xpcall(function()
         state.App:SetCloseCallback(reg.Cleanup)
 
         loadingStep(0.93, "Подключаем функции...")
-        state.Features = Features.new(Config, state.App, state.Scanner, state.Network,
-            state.Positions, state.ESP, state.Eggs, state.Automation, state.Player,
-            RarityM, alive, Stealth)
+        state.Features = Features.new(Config, state.App, RolesM, state.Network, state.World,
+            state.ESP, state.Farm, state.Combat, state.Movement, state.Visuals, alive, Stealth)
         state.Features:Build()
         state.Features:Start()
 
@@ -345,8 +331,7 @@ local success, failure = xpcall(function()
         print(Config.Version)
     end
 
-    -- Summon triggers make sense ONLY in headless mode (GUI already exists in
-    -- the classic path). Keyboard is handled inside UI.new.
+    -- Summon triggers make sense ONLY in headless mode.
     if Config.Settings.HeadlessLoad ~= false then
         table.insert(state.Connections, UserInputService.TouchTap:Connect(function(touchPositions, processed)
             if processed then return end
@@ -361,9 +346,7 @@ local success, failure = xpcall(function()
         end))
     end
 
-    -- Silent survival heartbeat: with DebugLogs the user can see how long the
-    -- session lives; the scanner cycle runs every ~5 seconds, so these markers
-    -- bracket the kill window for diagnostics.
+    -- Silent survival heartbeat (visible only with DebugLogs).
     reg.LoadedAt = os.clock()
     task.spawn(function()
         for _, mark in ipairs({ 10, 30, 60, 180 }) do
@@ -376,7 +359,6 @@ local success, failure = xpcall(function()
 end, debug.traceback)
 
 if not success then
-    -- Neutral tag, no signature words; details only in debug mode.
     warn("mh err: " .. tostring(failure))
     if DEBUG then print("mh " .. debug.traceback(failure)) end
     cleanup()

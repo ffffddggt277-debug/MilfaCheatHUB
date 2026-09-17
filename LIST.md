@@ -29,23 +29,16 @@ MilfaCheatHUB/
 ├── README.md
 ├── LIST.md
 ├── icon.png
-└── Steal-A-Egg/
+├── Steal-A-Egg/
+│   ├── main.lua
+│   ├── bundle.lua          (генерируется scripts/build_bundle.py — все модули одним файлом)
+│   └── modules/ (13 модулей: config, stealth, anticheat, ui, scanner, network,
+│       rarity, positions, esp, eggs, automation, player, features)
+└── MurderMystery2/
     ├── main.lua
-    ├── bundle.lua          (генерируется scripts/build_bundle.py — все модули одним файлом)
-    └── modules/
-        ├── config.lua
-        ├── stealth.lua
-        ├── anticheat.lua
-        ├── rarity.lua
-        ├── ui.lua
-        ├── scanner.lua
-        ├── eggs.lua
-        ├── network.lua
-        ├── positions.lua
-        ├── esp.lua
-        ├── automation.lua
-        ├── player.lua
-        └── features.lua
+    ├── bundle.lua          (генерируется scripts/build_bundle.py)
+    └── modules/ (13 модулей: config, stealth, anticheat, ui, roles, network,
+        world, mm2esp, farm, combat, movement, visuals, features)
 ```
 
 ## Назначение файлов
@@ -268,11 +261,88 @@ X-ориентиры: Forest `602`, Lake `746`, Desert `785`, Jungle `936`, Snow
 
 ## Запуск
 
+### Steal An Egg (v0.6.2)
+
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/main.lua?v=0.6.2"))()
 ```
 
+### Murder Mystery 2 (v0.1.0)
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.1.0"))()
+```
+
+## Murder Mystery 2
+
+- PlaceId: `142823291`;
+- папка: `/MurderMystery2/`;
+- точка входа: `/MurderMystery2/main.lua`;
+- текущая версия: `0.1.0`;
+- стиль GUI и CALM-доктрина — как в Steal-A-Egg v0.6.2 (тот же ui.lua/stealth.lua/anticheat.lua);
+- ресёрч: 9 открытых хабов разобраны (KittyHub, StyearX, xsync69, fogyhub, CGS Mobile,
+  zzerexx Utilities, v1ain, TrixAde, IqokczHub), конспект — `research/mm2_repos/FINDINGS_MM2.md`.
+
+### Список функций 0.1.0 (40+)
+
+ИГРОКИ: статус ролей (маньяк/шериф/герой видны ДО ножа — GetPlayerData + push), обновить роли,
+ESP игроков (Highlight сквозь стены), показ роли, показ дистанции, только цели, дальность ESP,
+частота обновления, алерт «МАНЬЯК рядом» + радиус, алерт/подсветка GunDrop, TP к маньяку, TP к шерифу.
+
+АВТО: магнит монет (firetouchinterest) + радиус, автофарм монет (Teleport/Smooth/Walk),
+задержка фарма, стоп при полной сумке, уход в лобби при полной сумке, монеты в лобби,
+сброс счётчика, автоподбор пистолета (GunDrop), Anti-AFK.
+
+ПЕРСОНАЖ: скорость (до 50) + сброс, прыжок, бесконечный прыжок, noclip, клик-ТП (glide),
+TP в лобби, TP на карту, TP над картой.
+
+ВИЗУАЛ: Fullbright, убрать туман, убирать трупы (Raggy), убирать барьеры (GlitchProof),
+лёгкий FPS-режим.
+
+БОЙ (opt-in, риск репортов): нож-аура + радиус + пауза, KILL ALL (радиус 60),
+авто-выстрел в маньяка (шериф/герой) + дистанция — родные ремоуты ножа/пистолета.
+
+СИСТЕМА: CALM-стелс (голый номер версии в логе, скрытый маунт, ноль хуков),
+SafeTeleport/glide + скорость, человеческие задержки, DebugLogs, PANIC, диагностика,
+проверка ремоутов.
+
+### Техкарта MM2 (из ресёрча, верифицировано живой игрой сообществом)
+
+- Роли: `ReplicatedStorage.GetPlayerData:InvokeServer()` → `{[name] = {Role, Killed, Dead}}`;
+  пуш `Remotes.Gameplay.PlayerDataChanged`; фолбэк — Knife/Gun в Character/Backpack;
+  Hero = мирный с пистолетом. Своя роль латчится на раунд.
+- Монеты: `<карта>.CoinContainer`, дети `Coin_Server` (+ атрибут Collected);
+  сбор — `firetouchinterest(HRP, coin, 0/1)`; сумка — `Remotes.Gameplay.CoinCollected (cur, max)`.
+- Пистолет: `workspace.GunDrop` (DescendantAdded), маньяк поднять НЕ может (сервер).
+- Убийство: `Knife.Events.KnifeStabbed:FireServer()` + `HandleTouched:FireServer(цель-HRP)`;
+  выстрел: `Gun.KnifeLocal.CreateBeam.RemoteFunction:InvokeServer(1, pos, "AH2")` — хит-тест на сервере.
+- Раунды: карта = workspace-Model с CoinContainer/Spawns (Lobby не считается);
+  таймер `Remotes.Extras.GetTimer:InvokeServer()`; лобби Y≈505 (14.72, 505.19, -61.29).
+- Клиент-клин: трупы `Raggy`, барьеры `GlitchProof`.
+- Античит: в 9 хабах обходов НЕ найдено — серверных проверок движения нет;
+  риски: клиентский Roblox-античит (зависит от экзекьютора) и репорты игроков.
+
 ## Журнал
+
+### 2026-09-17 — MM2 0.1.0 (новый проект: Murder Mystery 2)
+
+- Запрос пользователя: чит для MM2, GUI в том же стиле, 35+ функций, отдельная папка на GitHub,
+  предварительно изучить чужие скрипты.
+- Ресёрч-агент: склонировано/разобрано 9 открытых MM2-хабов (полный список и сниппеты —
+  `research/mm2_repos/FINDINGS_MM2.md`); главный источник — KittyHub с верифицированной
+  картой ремоутов (GetPlayerData RF + PlayerDataChanged push, CoinCollected, GetTimer,
+  ножевые Events.*, CreateBeam-RemoteFunction с серверным хит-тестом).
+- Каркас переиспользован из Steal-A-Egg (ui.lua/stealth.lua/anticheat.lua — те же файлы,
+  стиль идентичен), CALM-доктрина перенесена целиком.
+- Новые модули: roles.lua (детект ролей по 2 каналам + латч своей роли), network.lua
+  (реестр ремоутов), world.lua (карта/раунд/лобби/монеты/GunDrop-вотчер), mm2esp.lua
+  (Highlight+Billboard по ролям, алерты маньяка/пистолета), farm.lua (магнит + фарм в 3
+  режимах, учёт сумки), combat.lua (аура/килл-олл/авто-выстрел шерифа — родные ремоуты,
+  рейт-кэп и джиттер), movement.lua (скорость/прыжок/infjump/noclip/клик-ТП/TP-набор/Anti-AFK),
+  visuals.lua (fullbright/nofog/Raggy/GlitchProof/FPS-режим), features.lua (6 вкладок, 40+).
+- scripts/build_bundle.py обобщён (аргумент проекта), lua_check.py проверяет оба проекта.
+- Синтакс 28/28 PASS (14 SAE + 14 MM2, lupa lua54); bundle MM2 собран (13 модулей, 152 КБ).
+- Загрузка: loadstring с cache-buster ?v=0.1.0 — RAW отдаёт main.lua/bundle.lua (HTTP 200).
 
 ### 2026-09-17 — 0.6.2 (CALM: GUI сразу, ноль слов в консоли)
 
