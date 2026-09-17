@@ -6,23 +6,25 @@ local M = {}
 
 M["modules/config.lua"] = [====[
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.6.1 (MUTE silent load)
+-- Shared branding, palette, paths and defaults. v0.6.2 (CALM)
 --
--- MUTE-доктрина (v0.6.1): античит BAC читает LogService (весь консольный лог) и
--- сканирует окружение циклом ~5с. Код BAC-7517 = детект хуков/RemoteSpy-подобной
--- активности; кик в v0.4.0 пришёл ДАЖЕ БЕЗ GUI — единственными следами были
--- печать "[MilfaCheatHUB]" в консоль и ключи getgenv со словом "Cheat".
--- Поэтому v0.6.1:
---   * НОЛЬ print/warn при загрузке (печать = след в LogService)
+-- MUTE-доктрина (v0.6.1) + выводы v0.6.2: античит BAC читает LogService
+-- (весь консольный лог) и сканирует окружение циклом ~5с. Любая строка лога
+-- со словами GUI/Cheat/Hook — возможный триггер (кик в v0.4.0 пришёл ДАЖЕ БЕЗ
+-- GUI — единственным следом была печать со словом "Cheat").
+-- Поэтому v0.6.2:
+--   * при загрузке НЕ печатается НИЧЕГО, кроме голого номера версии
 --   * состояние в getgenv под ОДНИМ случайным ключом без слов-сигнатур
---   * GUI грузится СКРЫТЫМ (gethui/CoreGui), PlayerGui — последнее средство
---   * HeadlessLoad: загрузка вообще без GUI, вызов — 3 пальца по экрану /
---     RightControl / чат-команда
+--   * GUI появляется сразу (HeadlessLoad = false): на телефоне headless-
+--     вызов ненадёжен, а видимый GUI без хуков — профиль рабочих скриптов
+--   * GUI маунтится СКРЫТО (gethui/CoreGui), PlayerGui — последнее средство
+--   * HeadlessLoad = true — опция для ручного теста (3 пальца / RightControl
+--     / чат-команда)
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.6.1",
+    Version = "0.6.2",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -150,7 +152,8 @@ return {
         StealthSpeed = false,      -- скорость через CFrame, WalkSpeed не трогаем
         StealthSpeedValue = 32,    -- ст/с для стелс-скорости (держи < 60)
         MaxHatchPerTick = 4,       -- лимит AskHatch за такт (было 8)
-        HeadlessLoad = true,       -- загрузка БЕЗ GUI и лоадера; вызов: 3 пальца / RightControl / чат
+        HeadlessLoad = false,      -- false = GUI появляется сразу (надёжно на телефоне);
+                                   -- true = тихая загрузка, вызов: 3 пальца / RightControl / чат
         DebugLogs = false,         -- печать в консоль (ПОМНИ: LogService читается античитом!)
         LoadIcon = false,          -- тянуть иконку (writefile/getcustomasset оставляют следы)
         GuiMount = "Hidden",       -- Hidden = gethui/CoreGui (невидимы игровым сканерам) | PlayerGui | Auto
@@ -4181,7 +4184,7 @@ function Features:Build()
     end)
 
     -- ============================== СИСТЕМА ==============================
-    self.UI:AddHeading(systemTab, "СТЕЛС MUTE (v0.6.1)")
+    self.UI:AddHeading(systemTab, "СТЕЛС CALM (v0.6.2)")
     local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
     local mountNote = (mountKind == "PlayerGui")
         and "PlayerGui-фолбэк с камуфляж-именем (игровые скрипты его видят!)"
@@ -4202,8 +4205,8 @@ function Features:Build()
         settings.DebugLogs = value
         if self.Stealth then self.Stealth.Debug = value end
     end)
-    self.UI:AddText(systemTab, "Почему логи опасны", "Античит читает консоль через LogService (GetLogHistory). Любой print со словом Cheat/Hack/Exploit = готовая сигнатура. v0.6.1 молчит при загрузке и пишет только нейтральное [mh] ok.")
-    self.UI:AddText(systemTab, "Вызов GUI (headless)", "При загрузке без GUI: 3 пальца по экрану, RightControl или чат: /e mh. GUI маунтится скрыто (gethui/CoreGui).")
+    self.UI:AddText(systemTab, "Почему логи опасны", "Античит читает консоль через LogService (GetLogHistory). Любой print со словами Cheat/Hack/GUI — возможный триггер. v0.6.2 при загрузке печатает ТОЛЬКО голый номер версии, без слов.")
+    self.UI:AddText(systemTab, "GUI при загрузке", "GUI появляется сразу и маунтится скрыто (gethui/CoreGui) — невидим игровым сканерам. Тихий режим (без GUI) — опция HeadlessLoad: 3 пальца / RightControl / чат /e mh.")
 
     -- ================== ОБХОД АНТИЧИТА (BAC, opt-in) ==================
     -- Полеarm данные: v0.4.1 хук namecall -> BAC-4513, v0.5.0 freeze/masking -> BAC-2516.
@@ -4217,7 +4220,9 @@ function Features:Build()
         self.UI:AddToggle(systemTab, "АГРЕССИВНЫЙ обход BAC (не рекомендуется: палятся хуки)", settings.BacAutoBypass, function(value)
             settings.BacAutoBypass = value
             task.spawn(function()
-                AC:Init(self.Stealth, settings, value)
+                -- ВАЖНО: Init определён через ТОЧКУ — вызов через двоеточие
+                -- сдвигал бы аргументы (aggressive = таблица настроек = truthy).
+                AC.Init(self.Stealth, settings, value)
                 if self.ACStatus then self.ACStatus:Set(acStatusText()) end
             end)
         end)
@@ -4236,7 +4241,7 @@ function Features:Build()
         end)
         self.UI:AddButton(systemTab, "Применить обход заново (переинициализация)", function()
             task.spawn(function()
-                AC:Init(self.Stealth, settings, settings.BacAutoBypass == true)
+                AC.Init(self.Stealth, settings, settings.BacAutoBypass == true)
                 if self.ACStatus then self.ACStatus:Set(acStatusText()) end
             end)
         end)
@@ -4270,7 +4275,7 @@ function Features:Build()
             self.StealthStatus:Set("Диагностика выведена в консоль F9")
         end
     end)
-    self.UI:AddText(systemTab, "Как не словить BAC", "MUTE-режим: хуки ВЫКЛ, логи ВЫКЛ, маунт скрытый. BAC-7517 = детект хуков/спая; скан цикл ~5с. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
+    self.UI:AddText(systemTab, "Как не словить BAC", "CALM-режим: хуки ВЫКЛ, логи без слов, маунт скрытый, при загрузке печатается только номер версии. BAC-7517 = детект хуков/спая; скан цикл ~5с. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
 
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
@@ -4308,7 +4313,7 @@ function Features:Build()
     self.UI:AddText(
         systemTab,
         "Сборка " .. self.Config.Version,
-        "MUTE: ноль вывода при загрузке (LogService читается античитом), рандомный ключ реестра без сигнатур, скрытый маунт GUI, headless-вызов GUI (3 пальца / RightControl / /e mh). 50+ функций сохранены."
+        "CALM: при загрузке печатается только номер версии (LogService читается античитом), рандомный ключ реестра без сигнатур, скрытый маунт GUI, GUI появляется сразу. 50+ функций сохранены."
     )
 end
 

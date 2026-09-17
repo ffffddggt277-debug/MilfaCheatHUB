@@ -1,21 +1,23 @@
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.6.1 (MUTE silent load)
+-- Shared branding, palette, paths and defaults. v0.6.2 (CALM)
 --
--- MUTE-доктрина (v0.6.1): античит BAC читает LogService (весь консольный лог) и
--- сканирует окружение циклом ~5с. Код BAC-7517 = детект хуков/RemoteSpy-подобной
--- активности; кик в v0.4.0 пришёл ДАЖЕ БЕЗ GUI — единственными следами были
--- печать "[MilfaCheatHUB]" в консоль и ключи getgenv со словом "Cheat".
--- Поэтому v0.6.1:
---   * НОЛЬ print/warn при загрузке (печать = след в LogService)
+-- MUTE-доктрина (v0.6.1) + выводы v0.6.2: античит BAC читает LogService
+-- (весь консольный лог) и сканирует окружение циклом ~5с. Любая строка лога
+-- со словами GUI/Cheat/Hook — возможный триггер (кик в v0.4.0 пришёл ДАЖЕ БЕЗ
+-- GUI — единственным следом была печать со словом "Cheat").
+-- Поэтому v0.6.2:
+--   * при загрузке НЕ печатается НИЧЕГО, кроме голого номера версии
 --   * состояние в getgenv под ОДНИМ случайным ключом без слов-сигнатур
---   * GUI грузится СКРЫТЫМ (gethui/CoreGui), PlayerGui — последнее средство
---   * HeadlessLoad: загрузка вообще без GUI, вызов — 3 пальца по экрану /
---     RightControl / чат-команда
+--   * GUI появляется сразу (HeadlessLoad = false): на телефоне headless-
+--     вызов ненадёжен, а видимый GUI без хуков — профиль рабочих скриптов
+--   * GUI маунтится СКРЫТО (gethui/CoreGui), PlayerGui — последнее средство
+--   * HeadlessLoad = true — опция для ручного теста (3 пальца / RightControl
+--     / чат-команда)
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.6.1",
+    Version = "0.6.2",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -143,7 +145,8 @@ return {
         StealthSpeed = false,      -- скорость через CFrame, WalkSpeed не трогаем
         StealthSpeedValue = 32,    -- ст/с для стелс-скорости (держи < 60)
         MaxHatchPerTick = 4,       -- лимит AskHatch за такт (было 8)
-        HeadlessLoad = true,       -- загрузка БЕЗ GUI и лоадера; вызов: 3 пальца / RightControl / чат
+        HeadlessLoad = false,      -- false = GUI появляется сразу (надёжно на телефоне);
+                                   -- true = тихая загрузка, вызов: 3 пальца / RightControl / чат
         DebugLogs = false,         -- печать в консоль (ПОМНИ: LogService читается античитом!)
         LoadIcon = false,          -- тянуть иконку (writefile/getcustomasset оставляют следы)
         GuiMount = "Hidden",       -- Hidden = gethui/CoreGui (невидимы игровым сканерам) | PlayerGui | Auto

@@ -1,22 +1,24 @@
 -- MilfaCheatHUB • Steal An Egg
--- Silent modular entry point v0.6.1 (MUTE).
+-- Silent modular entry point v0.6.2 (CALM).
 --
--- Why MUTE: in v0.4.0 the script crashed BEFORE creating any GUI or hook and
--- STILL got kicked ~5s later. The only traces it left were (a) console output
--- — LogService is readable by game scripts via GetLogHistory, and our tag
--- "[MilfaCheatHUB]" literally contains the word "Cheat" — and (b) getgenv
--- keys with the same signature. v0.6.0 moved the GUI to PlayerGui and still
--- drew BAC-7517 (per research: hook/RemoteSpy-like detector, ~5s scan cycle).
--- So v0.6.1 ships DARK:
---   * zero print/warn while loading (one neutral "[mh] ok" line at the end)
+-- Evidence timeline:
+--   v0.4.0 crashed BEFORE creating any GUI or hook and STILL got kicked ~5s
+--   later — the only traces were console output (LogService is readable by
+--   game scripts via GetLogHistory) and getgenv keys with the word "Cheat".
+--   v0.6.0 (PlayerGui GUI, zero hooks) drew BAC-7517. v0.6.1 printed one
+--   line containing the word "GUI" — still a LogHistory keyword.
+-- v0.6.2 ships CALM:
+--   * the ONLY console output is the bare version number (no words at all)
 --   * session state lives in getgenv under ONE random key, no signature words
---   * no GUI, no loader, no feature loops on load (HeadlessLoad)
---   * GUI is summoned later: 3-finger tap / RightControl / chat command
---   * when shown, the GUI mounts hidden (gethui/CoreGui), never PlayerGui first
+--   * GUI mounts IMMEDIATELY (HeadlessLoad=false default): visible GUI with
+--     zero hooks is exactly the profile of scripts that survive in this game;
+--     mount is hidden-first (gethui/CoreGui), PlayerGui only as last resort
+--   * HeadlessLoad=true stays available as an opt-in (summon: 3-finger tap /
+--     RightControl / chat command)
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.6.1"
+local VERSION = "0.6.2"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -312,12 +314,14 @@ local success, failure = xpcall(function()
 
     if Config.Settings.HeadlessLoad ~= false then
         -- MUTE headless: no GUI, no loader, no instances, no loops. The only
-        -- artifact in this game session is this one neutral line of output.
-        print("[mh] ok | GUI: 3-finger tap / RightControl / chat " .. tostring(Config.Settings.ChatCommand or "/e mh"))
+        -- artifact in this game session is one bare version number — no words
+        -- for a LogHistory keyword scan to bite.
+        print(VERSION)
     else
-        -- Classic path: loader window + immediate build (previous behaviour).
+        -- Classic path (default): loader window + immediate build. No text is
+        -- printed; the visible window itself is the load confirmation.
         state.Loader = UI.ShowLoader(Config, Stealth)
-        loadingStep(0.12, "MUTE: " .. tostring(Stealth.GuiMount) .. (bundleOk and " • bundle" or " • файлы") .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
+        loadingStep(0.12, "CALM: " .. tostring(Stealth.GuiMount) .. (bundleOk and " • bundle" or " • файлы") .. (game.PlaceId == EXPECTED_PLACE_ID and " • игра ок" or " • другая игра"))
 
         buildWorld()
 
@@ -338,21 +342,24 @@ local success, failure = xpcall(function()
             state.Loader:Destroy()
             state.Loader = nil
         end
-        print("[mh] ok v" .. Config.Version)
+        print(Config.Version)
     end
 
-    -- Summon triggers for the headless GUI (keyboard is handled inside UI.new).
-    table.insert(state.Connections, UserInputService.TouchTap:Connect(function(touchPositions, processed)
-        if processed then return end
-        if #touchPositions >= 3 then summonGui() end
-    end))
-    table.insert(state.Connections, LocalPlayer.Chatted:Connect(function(message)
-        local wanted = string.lower((Config and Config.Settings.ChatCommand) or "/e mh")
-        local msg = string.lower(message)
-        if msg == wanted or msg == "/e mh" or msg == "mh" or msg == "/e m" then
-            summonGui()
-        end
-    end))
+    -- Summon triggers make sense ONLY in headless mode (GUI already exists in
+    -- the classic path). Keyboard is handled inside UI.new.
+    if Config.Settings.HeadlessLoad ~= false then
+        table.insert(state.Connections, UserInputService.TouchTap:Connect(function(touchPositions, processed)
+            if processed then return end
+            if #touchPositions >= 3 then summonGui() end
+        end))
+        table.insert(state.Connections, LocalPlayer.Chatted:Connect(function(message)
+            local wanted = string.lower((Config and Config.Settings.ChatCommand) or "/e mh")
+            local msg = string.lower(message)
+            if msg == wanted or msg == "/e mh" or msg == "mh" or msg == "/e m" then
+                summonGui()
+            end
+        end))
+    end
 
     -- Silent survival heartbeat: with DebugLogs the user can see how long the
     -- session lives; the scanner cycle runs every ~5 seconds, so these markers
@@ -370,8 +377,8 @@ end, debug.traceback)
 
 if not success then
     -- Neutral tag, no signature words; details only in debug mode.
-    warn("[mh] err: " .. tostring(failure))
-    if DEBUG then print("[mh] " .. debug.traceback(failure)) end
+    warn("mh err: " .. tostring(failure))
+    if DEBUG then print("mh " .. debug.traceback(failure)) end
     cleanup()
 end
 

@@ -430,7 +430,7 @@ function Features:Build()
     end)
 
     -- ============================== СИСТЕМА ==============================
-    self.UI:AddHeading(systemTab, "СТЕЛС MUTE (v0.6.1)")
+    self.UI:AddHeading(systemTab, "СТЕЛС CALM (v0.6.2)")
     local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
     local mountNote = (mountKind == "PlayerGui")
         and "PlayerGui-фолбэк с камуфляж-именем (игровые скрипты его видят!)"
@@ -451,8 +451,8 @@ function Features:Build()
         settings.DebugLogs = value
         if self.Stealth then self.Stealth.Debug = value end
     end)
-    self.UI:AddText(systemTab, "Почему логи опасны", "Античит читает консоль через LogService (GetLogHistory). Любой print со словом Cheat/Hack/Exploit = готовая сигнатура. v0.6.1 молчит при загрузке и пишет только нейтральное [mh] ok.")
-    self.UI:AddText(systemTab, "Вызов GUI (headless)", "При загрузке без GUI: 3 пальца по экрану, RightControl или чат: /e mh. GUI маунтится скрыто (gethui/CoreGui).")
+    self.UI:AddText(systemTab, "Почему логи опасны", "Античит читает консоль через LogService (GetLogHistory). Любой print со словами Cheat/Hack/GUI — возможный триггер. v0.6.2 при загрузке печатает ТОЛЬКО голый номер версии, без слов.")
+    self.UI:AddText(systemTab, "GUI при загрузке", "GUI появляется сразу и маунтится скрыто (gethui/CoreGui) — невидим игровым сканерам. Тихий режим (без GUI) — опция HeadlessLoad: 3 пальца / RightControl / чат /e mh.")
 
     -- ================== ОБХОД АНТИЧИТА (BAC, opt-in) ==================
     -- Полеarm данные: v0.4.1 хук namecall -> BAC-4513, v0.5.0 freeze/masking -> BAC-2516.
@@ -466,7 +466,9 @@ function Features:Build()
         self.UI:AddToggle(systemTab, "АГРЕССИВНЫЙ обход BAC (не рекомендуется: палятся хуки)", settings.BacAutoBypass, function(value)
             settings.BacAutoBypass = value
             task.spawn(function()
-                AC:Init(self.Stealth, settings, value)
+                -- ВАЖНО: Init определён через ТОЧКУ — вызов через двоеточие
+                -- сдвигал бы аргументы (aggressive = таблица настроек = truthy).
+                AC.Init(self.Stealth, settings, value)
                 if self.ACStatus then self.ACStatus:Set(acStatusText()) end
             end)
         end)
@@ -485,7 +487,7 @@ function Features:Build()
         end)
         self.UI:AddButton(systemTab, "Применить обход заново (переинициализация)", function()
             task.spawn(function()
-                AC:Init(self.Stealth, settings, settings.BacAutoBypass == true)
+                AC.Init(self.Stealth, settings, settings.BacAutoBypass == true)
                 if self.ACStatus then self.ACStatus:Set(acStatusText()) end
             end)
         end)
@@ -519,7 +521,7 @@ function Features:Build()
             self.StealthStatus:Set("Диагностика выведена в консоль F9")
         end
     end)
-    self.UI:AddText(systemTab, "Как не словить BAC", "MUTE-режим: хуки ВЫКЛ, логи ВЫКЛ, маунт скрытый. BAC-7517 = детект хуков/спая; скан цикл ~5с. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
+    self.UI:AddText(systemTab, "Как не словить BAC", "CALM-режим: хуки ВЫКЛ, логи без слов, маунт скрытый, при загрузке печатается только номер версии. BAC-7517 = детект хуков/спая; скан цикл ~5с. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
 
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
@@ -557,7 +559,7 @@ function Features:Build()
     self.UI:AddText(
         systemTab,
         "Сборка " .. self.Config.Version,
-        "MUTE: ноль вывода при загрузке (LogService читается античитом), рандомный ключ реестра без сигнатур, скрытый маунт GUI, headless-вызов GUI (3 пальца / RightControl / /e mh). 50+ функций сохранены."
+        "CALM: при загрузке печатается только номер версии (LogService читается античитом), рандомный ключ реестра без сигнатур, скрытый маунт GUI, GUI появляется сразу. 50+ функций сохранены."
     )
 end
 
