@@ -167,7 +167,7 @@ function Features:ApplyRigSyncCut(enabled)
     local networking = packages and packages:FindFirstChild("Networking")
     local remote = networking and networking:FindFirstChild("RE/RigSync/Refresh")
     if not remote then
-        print("[MilfaCheatHUB] RigSync: remote RE/RigSync/Refresh не найден")
+        if self.Stealth then self.Stealth.Note("RigSync: remote RE/RigSync/Refresh не найден") end
         return
     end
 
@@ -182,13 +182,13 @@ function Features:ApplyRigSyncCut(enabled)
     if not enabled then return end
 
     if type(getconnections) ~= "function" then
-        print("[MilfaCheatHUB] RigSync: getconnections не поддерживается экзекьютором")
+        if self.Stealth then self.Stealth.Note("RigSync: getconnections не поддерживается экзекьютором") end
         return
     end
 
     local ok, connections = pcall(getconnections, remote.OnClientEvent)
     if not ok or type(connections) ~= "table" then
-        print("[MilfaCheatHUB] RigSync: не удалось получить connections: " .. tostring(connections))
+        if self.Stealth then self.Stealth.Note("RigSync: не удалось получить connections: " .. tostring(connections)) end
         return
     end
 
@@ -205,7 +205,7 @@ function Features:ApplyRigSyncCut(enabled)
         end
     end
     self._RigSyncConns = stored
-    print("[MilfaCheatHUB] RigSync: отключено обработчиков: " .. patched)
+    if self.Stealth then self.Stealth.Note("RigSync: отключено обработчиков: " .. patched) end
 end
 
 function Features:Build()
@@ -430,11 +430,11 @@ function Features:Build()
     end)
 
     -- ============================== СИСТЕМА ==============================
-    self.UI:AddHeading(systemTab, "СТЕЛС GHOST (v0.6.0)")
+    self.UI:AddHeading(systemTab, "СТЕЛС MUTE (v0.6.1)")
     local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
     local mountNote = (mountKind == "PlayerGui")
-        and "Обычный PlayerGui, чистое имя — профиль проверенных хабов (кика нет)"
-        or "Скрытый маунт (gethui/CoreGui)"
+        and "PlayerGui-фолбэк с камуфляж-именем (игровые скрипты его видят!)"
+        or "Скрытый маунт (gethui/CoreGui) — невидим игровым сканерам"
     self.StealthStatus = self.UI:AddText(systemTab, "Маунт GUI: " .. mountKind, mountNote)
     self.UI:AddToggle(systemTab, "Безопасные телепорты (glide)", settings.SafeTeleport, function(value)
         settings.SafeTeleport = value
@@ -447,6 +447,12 @@ function Features:Build()
     self.UI:AddToggle(systemTab, "Человеческие задержки (джиттер)", settings.HumanizeDelays, function(value)
         settings.HumanizeDelays = value
     end)
+    self.UI:AddToggle(systemTab, "Подробные логи в консоль (ДЕРЖИ ВЫКЛ)", settings.DebugLogs, function(value)
+        settings.DebugLogs = value
+        if self.Stealth then self.Stealth.Debug = value end
+    end)
+    self.UI:AddText(systemTab, "Почему логи опасны", "Античит читает консоль через LogService (GetLogHistory). Любой print со словом Cheat/Hack/Exploit = готовая сигнатура. v0.6.1 молчит при загрузке и пишет только нейтральное [mh] ok.")
+    self.UI:AddText(systemTab, "Вызов GUI (headless)", "При загрузке без GUI: 3 пальца по экрану, RightControl или чат: /e mh. GUI маунтится скрыто (gethui/CoreGui).")
 
     -- ================== ОБХОД АНТИЧИТА (BAC, opt-in) ==================
     -- Полеarm данные: v0.4.1 хук namecall -> BAC-4513, v0.5.0 freeze/masking -> BAC-2516.
@@ -499,17 +505,21 @@ function Features:Build()
         settings.MaxHatchPerTick = value
     end)
     self.UI:AddButton(systemTab, "PANIC: убрать все следы (GUI, ESP, скорость)", function()
-        local env = (getgenv and getgenv()) or _G
-        if env.MilfaPanic then env.MilfaPanic() end
+        local stealth = self.Stealth
+        local registry = stealth and stealth.Registry
+        if registry and registry.Panic then
+            registry.Panic()
+        end
     end)
     self.UI:AddButton(systemTab, "Диагностика в консоль (F9)", function()
-        local env = (getgenv and getgenv()) or _G
-        if env.MilfaDiagnostics then
-            env.MilfaDiagnostics()
+        local stealth = self.Stealth
+        local registry = stealth and stealth.Registry
+        if registry and registry.Diag then
+            registry.Diag()
             self.StealthStatus:Set("Диагностика выведена в консоль F9")
         end
     end)
-    self.UI:AddText(systemTab, "Как не словить BAC", "Держи GHOST-режим (хуки ВЫКЛ) — рабочие хабы бегают без единого хука. Стелс-скорость ON + SafeTeleport ON + джиттер ON. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
+    self.UI:AddText(systemTab, "Как не словить BAC", "MUTE-режим: хуки ВЫКЛ, логи ВЫКЛ, маунт скрытый. BAC-7517 = детект хуков/спая; скан цикл ~5с. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
 
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
@@ -530,12 +540,12 @@ function Features:Build()
         if folder then
             for _, instance in ipairs(folder:GetDescendants()) do
                 if instance:IsA("RemoteFunction") or instance:IsA("RemoteEvent") then
-                    print("[MilfaCheatHUB] " .. instance.ClassName .. " " .. instance.Name)
+                    print("[mh] " .. instance.ClassName .. " " .. instance.Name)
                     count = count + 1
                 end
             end
         end
-        print("[MilfaCheatHUB] Всего: " .. count)
+        print("[mh] Всего: " .. count)
     end)
     self.FpsStatus = self.UI:AddText(systemTab, "Производительность", "Обычный режим")
     self.UI:AddToggle(systemTab, "Лёгкий FPS-режим", false, function(value)
@@ -547,7 +557,7 @@ function Features:Build()
     self.UI:AddText(
         systemTab,
         "Сборка " .. self.Config.Version,
-        "STEALTH: скрытый маунт GUI/ESP, случайные имена, glide-телепорты, стелс-скорость без WalkSpeed, джиттер задержек, PANIC (getgenv().MilfaPanic()). 50+ функций из 0.3.x сохранены."
+        "MUTE: ноль вывода при загрузке (LogService читается античитом), рандомный ключ реестра без сигнатур, скрытый маунт GUI, headless-вызов GUI (3 пальца / RightControl / /e mh). 50+ функций сохранены."
     )
 end
 

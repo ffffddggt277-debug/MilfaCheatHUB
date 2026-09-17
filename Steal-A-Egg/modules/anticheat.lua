@@ -190,7 +190,9 @@ function AC.InstallNamecallGuard()
             -- Last line of defense: client-side kick.
             if method == "Kick" and self == player and StealthRef.BlockKick ~= false then
                 AC.Status.BlockedKicks = AC.Status.BlockedKicks + 1
-                warn("[MilfaCheatHUB] Заблокирован клиентский Kick (#" .. AC.Status.BlockedKicks .. ")")
+                -- Печать ТОЛЬКО в debug-режиме: warn попадает в LogService,
+                -- который читается античитом (MUTE-доктрина v0.6.1).
+                if StealthRef.Note then pcall(StealthRef.Note, "заблокирован клиентский Kick #" .. AC.Status.BlockedKicks) end
                 return nil
             end
 

@@ -6,12 +6,23 @@ local M = {}
 
 M["modules/config.lua"] = [====[
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.6.0 (GHOST minimal footprint)
+-- Shared branding, palette, paths and defaults. v0.6.1 (MUTE silent load)
+--
+-- MUTE-доктрина (v0.6.1): античит BAC читает LogService (весь консольный лог) и
+-- сканирует окружение циклом ~5с. Код BAC-7517 = детект хуков/RemoteSpy-подобной
+-- активности; кик в v0.4.0 пришёл ДАЖЕ БЕЗ GUI — единственными следами были
+-- печать "[MilfaCheatHUB]" в консоль и ключи getgenv со словом "Cheat".
+-- Поэтому v0.6.1:
+--   * НОЛЬ print/warn при загрузке (печать = след в LogService)
+--   * состояние в getgenv под ОДНИМ случайным ключом без слов-сигнатур
+--   * GUI грузится СКРЫТЫМ (gethui/CoreGui), PlayerGui — последнее средство
+--   * HeadlessLoad: загрузка вообще без GUI, вызов — 3 пальца по экрану /
+--     RightControl / чат-команда
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.6.0",
+    Version = "0.6.1",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -132,14 +143,18 @@ return {
         AutoServerHop = false,
         HopEmptyRuns = 12,
 
-        -- Stealth (GHOST doctrine: minimal footprint, zero hooks on load)
+        -- Stealth (MUTE doctrine: silent load, hidden mount, zero hooks)
         SafeTeleport = true,       -- glide вместо мгновенных CFrame-прыжков
         GlideSpeed = 48,           -- скорость glide, ст/с (держи < 70)
         HumanizeDelays = true,     -- случайный джиттер всех задержек
         StealthSpeed = false,      -- скорость через CFrame, WalkSpeed не трогаем
         StealthSpeedValue = 32,    -- ст/с для стелс-скорости (держи < 60)
         MaxHatchPerTick = 4,       -- лимит AskHatch за такт (было 8)
-        GuiMount = "PlayerGui",    -- PlayerGui (проверено рабочими хабами) | Hidden | Auto
+        HeadlessLoad = true,       -- загрузка БЕЗ GUI и лоадера; вызов: 3 пальца / RightControl / чат
+        DebugLogs = false,         -- печать в консоль (ПОМНИ: LogService читается античитом!)
+        LoadIcon = false,          -- тянуть иконку (writefile/getcustomasset оставляют следы)
+        GuiMount = "Hidden",       -- Hidden = gethui/CoreGui (невидимы игровым сканерам) | PlayerGui | Auto
+        ChatCommand = "/e mh",     -- команда чата для вызова GUI в headless-режиме
         BacAutoBypass = false,     -- НЕ включать агрессивный обход BAC при загрузке
         FastPrompt = false,        -- HoldDuration=0 у ProximityPrompt «CarryAreaEgg»
         RigSyncCut = false,        -- отключить клиентские обработчики RE/RigSync/Refresh
@@ -165,20 +180,27 @@ return {
 ]====]
 
 M["modules/stealth.lua"] = [====[
--- MilfaCheatHUB • stealth core v0.6.0 (GHOST doctrine)
--- v0.6.0 lesson (proven by working open-source hubs, e.g. boblo "opensource_egg"):
---   this game's anticheat does NOT scan PlayerGui for foreign ScreenGuis and does
---   NOT scan workspace folders. What it DOES flag is tampering: hooked __namecall,
---   hooked __newindex, getgc heap scans, frozen tables, masked Http probes.
---   So the stealth layer now means:
---   1) plain PlayerGui mount with a clean name (boblo-proven), hidden mounts optional
---   2) ESP container in workspace (boblo-proven)
---   3) smooth CFrame glide instead of instant teleports (server position checks)
---   4) humanized delays (jitter) for every automation remote call
---   5) CFrame walk speed that never touches Humanoid.WalkSpeed
---   6) panic switch that wipes every trace instantly
---   NO hooks are installed here. Aggressive BAC counters live in anticheat.lua and
---   are strictly opt-in (Settings.BacAutoBypass).
+-- MilfaCheatHUB • stealth core v0.6.1 (MUTE doctrine)
+-- Field evidence timeline:
+--   v0.4.0: crash BEFORE any GUI/hooks — STILL kicked in ~5s. The only traces
+--           were console output (LogService IS readable by game scripts via
+--           GetLogHistory) and getgenv keys carrying the word "Cheat".
+--   v0.5.0: hooks/getgc masking -> BAC-2516 (tampering detector)
+--   v0.6.0: plain PlayerGui ScreenGui + zero hooks -> BAC-7517
+--   Research (Krexel/TFN/Madara, same PlaceId): BAC runs a ~5s scan cycle
+--   (IntegrityHeartbeat); BAC-7517 = hook/RemoteSpy-like detection; working
+--   hubs mount their GUI in gethui()/CoreGui — NOT in PlayerGui.
+-- So the stealth layer now means:
+--   1) hidden mount first: gethui() -> CoreGui, PlayerGui ONLY as a last
+--      resort and then with a camouflage name cloned from an existing game gui
+--   2) silent operation: Stealth.Note() prints ONLY when DebugLogs is on
+--   3) ESP container in workspace under a RANDOM name
+--   4) smooth CFrame glide instead of instant teleports (server position checks)
+--   5) humanized delays (jitter) for every automation remote call
+--   6) CFrame walk speed that never touches Humanoid.WalkSpeed
+--   7) panic switch that wipes every trace instantly
+--   NO hooks are installed here. Aggressive BAC counters live in anticheat.lua
+--   and are strictly opt-in (Settings.BacAutoBypass).
 
 local Stealth = {}
 local RunService = game:GetService("RunService")
@@ -194,8 +216,16 @@ Stealth.Aborted = false
 Stealth.GlideSpeed = 48
 Stealth.Gliding = false
 Stealth.Container = nil
-Stealth.GuiMount = "PlayerGui" -- "PlayerGui" (boblo-proven) | "Hidden" (gethui/CoreGui) | "Auto"
-Stealth.PublicName = "MilfaHubUI" -- clean name for the PlayerGui mount
+Stealth.GuiMount = "Hidden" -- "Hidden" (gethui/CoreGui, невидимы игровым сканерам) | "PlayerGui" | "Auto"
+Stealth.PublicName = nil    -- камуфляж-имя для PlayerGui-фолбэка (клон имени игрового GUI)
+Stealth.Debug = false       -- включается из Config.Settings.DebugLogs
+
+-- ЕДИНСТВЕННАЯ точка печати. Молчит, если Debug выключен: каждый print/warn
+-- попадает в LogService, который читается игровыми скриптами.
+function Stealth.Note(...)
+    if not Stealth.Debug then return end
+    print("[mh]", ...)
+end
 
 function Stealth.RandomName(length)
     length = length or 14
@@ -241,26 +271,42 @@ local function hiddenTargets()
     return targets
 end
 
--- Mount order follows Stealth.GuiMount. PlayerGui with a clean name is the
--- default because the working open-source hubs mount there and never get kicked.
+-- Mount order follows Stealth.GuiMount. Hidden (gethui/CoreGui) is the default:
+-- game scripts cannot enumerate those roots at all, so no scanner ever sees the
+-- GUI. PlayerGui is a LAST resort: game scripts enumerate it freely, so there we
+-- camouflage by cloning the name of an existing game ScreenGui.
 local function buildTargets()
     local targets = {}
-    local mode = Stealth.GuiMount or "PlayerGui"
+    local mode = Stealth.GuiMount or "Hidden"
+
+    if mode == "PlayerGui" then
+        local pgui = getPlayerGui()
+        if pgui then targets[#targets + 1] = {pgui, "PlayerGui"} end
+        return targets
+    end
+
+    -- Hidden / Auto: hidden roots first.
+    for _, target in ipairs(hiddenTargets()) do
+        targets[#targets + 1] = target
+    end
 
     local pgui = getPlayerGui()
     if pgui then targets[#targets + 1] = {pgui, "PlayerGui"} end
+    return targets
+end
 
-    if mode ~= "PlayerGui" then
-        for _, target in ipairs(hiddenTargets()) do
-            targets[#targets + 1] = target
+-- PlayerGui fallback: clone the name of an existing game ScreenGui so a
+-- name-whitelist scan sees a familiar entry. Generic fallback otherwise.
+local function camouflageName()
+    local pgui = getPlayerGui()
+    if pgui then
+        for _, child in ipairs(pgui:GetChildren()) do
+            if child:IsA("ScreenGui") and child.Name and #child.Name > 0 then
+                return child.Name
+            end
         end
     end
-
-    -- Absolute fallback in case Hidden mode lost access to both hidden roots.
-    if mode == "Hidden" and pgui and #targets == 0 then
-        targets[#targets + 1] = {pgui, "PlayerGui"}
-    end
-    return targets
+    return "ScreenOverlay"
 end
 
 local function mountInstance(instance)
@@ -276,8 +322,8 @@ local function mountInstance(instance)
     return nil
 end
 
--- Hidden container for ESP objects. Workspace-first (boblo-proven: Highlights and
--- BillboardGuis render fine from a workspace folder and game scripts ignore it).
+-- Hidden container for ESP objects. Workspace folder under a RANDOM name
+-- (no "ESP"-like signature; folder is created only when ESP is enabled).
 function Stealth.GetContainer()
     if Stealth.Container and Stealth.Container.Parent then
         return Stealth.Container
@@ -285,7 +331,7 @@ function Stealth.GetContainer()
 
     local workspace = game:GetService("Workspace")
     local folder = Instance.new("Folder")
-    folder.Name = "MilfaESP"
+    folder.Name = Stealth.RandomName(12)
     local ok = pcall(function() folder.Parent = workspace end)
     if ok and folder.Parent == workspace then
         Stealth.Container = folder
@@ -303,14 +349,14 @@ function Stealth.GetContainer()
     return nil
 end
 
--- ScreenGui mount. In PlayerGui we keep a clean readable name (random gibberish
--- stands out to whitelist scanners; working hubs ship their brand name there).
--- In hidden mounts (gethui/CoreGui) the random name stays.
+-- ScreenGui mount. Hidden roots get a random name (they are invisible to game
+-- scripts anyway). PlayerGui fallback gets a camouflage name cloned from an
+-- existing game ScreenGui (whitelist scanners see a familiar entry).
 function Stealth.MountScreenGui(gui)
     gui.Name = Stealth.RandomName(18)
     local kind = mountInstance(gui)
     if kind == "PlayerGui" then
-        pcall(function() gui.Name = Stealth.PublicName end)
+        pcall(function() gui.Name = camouflageName() end)
     end
     return kind
 end
@@ -625,7 +671,9 @@ function AC.InstallNamecallGuard()
             -- Last line of defense: client-side kick.
             if method == "Kick" and self == player and StealthRef.BlockKick ~= false then
                 AC.Status.BlockedKicks = AC.Status.BlockedKicks + 1
-                warn("[MilfaCheatHUB] Заблокирован клиентский Kick (#" .. AC.Status.BlockedKicks .. ")")
+                -- Печать ТОЛЬКО в debug-режиме: warn попадает в LogService,
+                -- который читается античитом (MUTE-доктрина v0.6.1).
+                if StealthRef.Note then pcall(StealthRef.Note, "заблокирован клиентский Kick #" .. AC.Status.BlockedKicks) end
                 return nil
             end
 
@@ -739,7 +787,7 @@ return AC
 ]====]
 
 M["modules/ui.lua"] = [====[
--- MilfaCheatHUB • compact neon interface v0.6 (GHOST: clean names, PlayerGui-first)
+-- MilfaCheatHUB • compact neon interface v0.6.1 (MUTE: hidden-first mount)
 
 local UI = {}
 local TweenService = game:GetService("TweenService")
@@ -752,32 +800,34 @@ math.randomseed(os.time() + math.floor(os.clock() * 100000))
 -- Active stealth module (set by ShowLoader/UI.new).
 local StealthRef = nil
 
+-- Local icon cache. NO getgenv writes here: every key we publish is a trace
+-- readable by keyword scans (LogService/_G bridges on some executors).
+local IconAsset = nil
+local IconLoading = false
+
 local function randomGuiName()
     if StealthRef and StealthRef.RandomName then return StealthRef.RandomName(18) end
     return "UI_" .. tostring(math.random(100000, 999999))
 end
 
-local function environment()
-    return (getgenv and getgenv()) or _G
-end
-
 local function mount(gui)
-    -- Preferred: stealth module (PlayerGui-first per v0.6.0 GHOST doctrine)
+    -- Preferred: stealth module (Hidden-first per v0.6.1 MUTE doctrine:
+    -- gethui/CoreGui are not enumerable by game scripts at all).
     if StealthRef and StealthRef.MountScreenGui then
         local ok, kind = pcall(StealthRef.MountScreenGui, gui)
         if ok and kind then return true end
     end
 
-    -- Legacy fallback: plain PlayerGui first (proven safe in this game),
-    -- hidden roots second — mirrors the working open-source hubs.
+    -- Legacy fallback: hidden roots first, PlayerGui last (game scripts can
+    -- enumerate PlayerGui freely).
     local targets = {}
-    local player = Players.LocalPlayer
-    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
     if gethui then
         local ok, value = pcall(gethui)
         if ok and value then targets[#targets + 1] = value end
     end
     targets[#targets + 1] = CoreGui
+    local player = Players.LocalPlayer
+    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
 
     for _, target in ipairs(targets) do
         if target then
@@ -813,33 +863,32 @@ local function gradient(parent, first, second, rotation)
 end
 
 local function loadIconAsync(url, callback)
-    local env = environment()
-    if env.MilfaCheatHUBIconAsset then
-        callback(env.MilfaCheatHUBIconAsset)
+    if IconAsset then
+        callback(IconAsset)
         return
     end
 
-    if env.MilfaCheatHUBIconLoading then
+    if IconLoading then
         task.spawn(function()
             for _ = 1, 80 do
-                if env.MilfaCheatHUBIconAsset then
-                    callback(env.MilfaCheatHUBIconAsset)
+                if IconAsset then
+                    callback(IconAsset)
                     return
                 end
-                if not env.MilfaCheatHUBIconLoading then return end
+                if not IconLoading then return end
                 task.wait(0.1)
             end
         end)
         return
     end
 
-    env.MilfaCheatHUBIconLoading = true
+    IconLoading = true
     task.spawn(function()
         local asset
         if writefile and getcustomasset then
             local requestFn = request or http_request or (syn and syn.request)
             if requestFn then
-                local folder = "MilfaCheatHUB"
+                local folder = "mh_cache"
                 local path = folder .. "/icon.png"
                 pcall(function()
                     if makefolder and not (isfolder and isfolder(folder)) then makefolder(folder) end
@@ -853,8 +902,8 @@ local function loadIconAsync(url, callback)
                 if ok then asset = result end
             end
         end
-        env.MilfaCheatHUBIconAsset = asset
-        env.MilfaCheatHUBIconLoading = false
+        IconAsset = asset
+        IconLoading = false
         if asset then callback(asset) end
     end)
 end
@@ -880,18 +929,22 @@ local function createLogo(parent, config, size, position, circular)
     fallback.TextSize = math.max(16, math.floor(size.X.Offset * 0.5))
     fallback.Parent = holder
 
-    loadIconAsync(config.IconUrl, function(asset)
-        if not holder.Parent then return end
-        fallback.Visible = false
-        local image = Instance.new("ImageLabel")
-        image.Size = UDim2.new(1, -6, 1, -6)
-        image.Position = UDim2.fromOffset(3, 3)
-        image.BackgroundTransparency = 1
-        image.Image = asset
-        image.ScaleType = Enum.ScaleType.Fit
-        image.Parent = holder
-        corner(image, circular and 999 or 8)
-    end)
+    -- Иконка тянется ТОЛЬКО по флагу LoadIcon: writefile/getcustomasset/
+    -- лишний HttpGet — дополнительные следы. По умолчанию выключена (логотип "M").
+    if config.Settings and config.Settings.LoadIcon then
+        loadIconAsync(config.IconUrl, function(asset)
+            if not holder.Parent then return end
+            fallback.Visible = false
+            local image = Instance.new("ImageLabel")
+            image.Size = UDim2.new(1, -6, 1, -6)
+            image.Position = UDim2.fromOffset(3, 3)
+            image.BackgroundTransparency = 1
+            image.Image = asset
+            image.ScaleType = Enum.ScaleType.Fit
+            image.Parent = holder
+            corner(image, circular and 999 or 8)
+        end)
+    end
     return holder
 end
 
@@ -3865,7 +3918,7 @@ function Features:ApplyRigSyncCut(enabled)
     local networking = packages and packages:FindFirstChild("Networking")
     local remote = networking and networking:FindFirstChild("RE/RigSync/Refresh")
     if not remote then
-        print("[MilfaCheatHUB] RigSync: remote RE/RigSync/Refresh не найден")
+        if self.Stealth then self.Stealth.Note("RigSync: remote RE/RigSync/Refresh не найден") end
         return
     end
 
@@ -3880,13 +3933,13 @@ function Features:ApplyRigSyncCut(enabled)
     if not enabled then return end
 
     if type(getconnections) ~= "function" then
-        print("[MilfaCheatHUB] RigSync: getconnections не поддерживается экзекьютором")
+        if self.Stealth then self.Stealth.Note("RigSync: getconnections не поддерживается экзекьютором") end
         return
     end
 
     local ok, connections = pcall(getconnections, remote.OnClientEvent)
     if not ok or type(connections) ~= "table" then
-        print("[MilfaCheatHUB] RigSync: не удалось получить connections: " .. tostring(connections))
+        if self.Stealth then self.Stealth.Note("RigSync: не удалось получить connections: " .. tostring(connections)) end
         return
     end
 
@@ -3903,7 +3956,7 @@ function Features:ApplyRigSyncCut(enabled)
         end
     end
     self._RigSyncConns = stored
-    print("[MilfaCheatHUB] RigSync: отключено обработчиков: " .. patched)
+    if self.Stealth then self.Stealth.Note("RigSync: отключено обработчиков: " .. patched) end
 end
 
 function Features:Build()
@@ -4128,11 +4181,11 @@ function Features:Build()
     end)
 
     -- ============================== СИСТЕМА ==============================
-    self.UI:AddHeading(systemTab, "СТЕЛС GHOST (v0.6.0)")
+    self.UI:AddHeading(systemTab, "СТЕЛС MUTE (v0.6.1)")
     local mountKind = self.Stealth and tostring(self.Stealth.MountKind) or "неизвестно"
     local mountNote = (mountKind == "PlayerGui")
-        and "Обычный PlayerGui, чистое имя — профиль проверенных хабов (кика нет)"
-        or "Скрытый маунт (gethui/CoreGui)"
+        and "PlayerGui-фолбэк с камуфляж-именем (игровые скрипты его видят!)"
+        or "Скрытый маунт (gethui/CoreGui) — невидим игровым сканерам"
     self.StealthStatus = self.UI:AddText(systemTab, "Маунт GUI: " .. mountKind, mountNote)
     self.UI:AddToggle(systemTab, "Безопасные телепорты (glide)", settings.SafeTeleport, function(value)
         settings.SafeTeleport = value
@@ -4145,6 +4198,12 @@ function Features:Build()
     self.UI:AddToggle(systemTab, "Человеческие задержки (джиттер)", settings.HumanizeDelays, function(value)
         settings.HumanizeDelays = value
     end)
+    self.UI:AddToggle(systemTab, "Подробные логи в консоль (ДЕРЖИ ВЫКЛ)", settings.DebugLogs, function(value)
+        settings.DebugLogs = value
+        if self.Stealth then self.Stealth.Debug = value end
+    end)
+    self.UI:AddText(systemTab, "Почему логи опасны", "Античит читает консоль через LogService (GetLogHistory). Любой print со словом Cheat/Hack/Exploit = готовая сигнатура. v0.6.1 молчит при загрузке и пишет только нейтральное [mh] ok.")
+    self.UI:AddText(systemTab, "Вызов GUI (headless)", "При загрузке без GUI: 3 пальца по экрану, RightControl или чат: /e mh. GUI маунтится скрыто (gethui/CoreGui).")
 
     -- ================== ОБХОД АНТИЧИТА (BAC, opt-in) ==================
     -- Полеarm данные: v0.4.1 хук namecall -> BAC-4513, v0.5.0 freeze/masking -> BAC-2516.
@@ -4197,17 +4256,21 @@ function Features:Build()
         settings.MaxHatchPerTick = value
     end)
     self.UI:AddButton(systemTab, "PANIC: убрать все следы (GUI, ESP, скорость)", function()
-        local env = (getgenv and getgenv()) or _G
-        if env.MilfaPanic then env.MilfaPanic() end
+        local stealth = self.Stealth
+        local registry = stealth and stealth.Registry
+        if registry and registry.Panic then
+            registry.Panic()
+        end
     end)
     self.UI:AddButton(systemTab, "Диагностика в консоль (F9)", function()
-        local env = (getgenv and getgenv()) or _G
-        if env.MilfaDiagnostics then
-            env.MilfaDiagnostics()
+        local stealth = self.Stealth
+        local registry = stealth and stealth.Registry
+        if registry and registry.Diag then
+            registry.Diag()
             self.StealthStatus:Set("Диагностика выведена в консоль F9")
         end
     end)
-    self.UI:AddText(systemTab, "Как не словить BAC", "Держи GHOST-режим (хуки ВЫКЛ) — рабочие хабы бегают без единого хука. Стелс-скорость ON + SafeTeleport ON + джиттер ON. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
+    self.UI:AddText(systemTab, "Как не словить BAC", "MUTE-режим: хуки ВЫКЛ, логи ВЫКЛ, маунт скрытый. BAC-7517 = детект хуков/спая; скан цикл ~5с. Glide < 70, стелс-скорость < 60. Прямые TP с яйцом сервер отклоняет — только glide-ходьба.")
 
     self.UI:AddHeading(systemTab, "Диагностика MilfaCheatHUB")
     self.NetworkStatus = self.UI:AddText(systemTab, "Networking", self.Network:Summary())
@@ -4228,12 +4291,12 @@ function Features:Build()
         if folder then
             for _, instance in ipairs(folder:GetDescendants()) do
                 if instance:IsA("RemoteFunction") or instance:IsA("RemoteEvent") then
-                    print("[MilfaCheatHUB] " .. instance.ClassName .. " " .. instance.Name)
+                    print("[mh] " .. instance.ClassName .. " " .. instance.Name)
                     count = count + 1
                 end
             end
         end
-        print("[MilfaCheatHUB] Всего: " .. count)
+        print("[mh] Всего: " .. count)
     end)
     self.FpsStatus = self.UI:AddText(systemTab, "Производительность", "Обычный режим")
     self.UI:AddToggle(systemTab, "Лёгкий FPS-режим", false, function(value)
@@ -4245,7 +4308,7 @@ function Features:Build()
     self.UI:AddText(
         systemTab,
         "Сборка " .. self.Config.Version,
-        "STEALTH: скрытый маунт GUI/ESP, случайные имена, glide-телепорты, стелс-скорость без WalkSpeed, джиттер задержек, PANIC (getgenv().MilfaPanic()). 50+ функций из 0.3.x сохранены."
+        "MUTE: ноль вывода при загрузке (LogService читается античитом), рандомный ключ реестра без сигнатур, скрытый маунт GUI, headless-вызов GUI (3 пальца / RightControl / /e mh). 50+ функций сохранены."
     )
 end
 

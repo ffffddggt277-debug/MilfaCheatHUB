@@ -1,4 +1,4 @@
--- MilfaCheatHUB • compact neon interface v0.6 (GHOST: clean names, PlayerGui-first)
+-- MilfaCheatHUB • compact neon interface v0.6.1 (MUTE: hidden-first mount)
 
 local UI = {}
 local TweenService = game:GetService("TweenService")
@@ -11,32 +11,34 @@ math.randomseed(os.time() + math.floor(os.clock() * 100000))
 -- Active stealth module (set by ShowLoader/UI.new).
 local StealthRef = nil
 
+-- Local icon cache. NO getgenv writes here: every key we publish is a trace
+-- readable by keyword scans (LogService/_G bridges on some executors).
+local IconAsset = nil
+local IconLoading = false
+
 local function randomGuiName()
     if StealthRef and StealthRef.RandomName then return StealthRef.RandomName(18) end
     return "UI_" .. tostring(math.random(100000, 999999))
 end
 
-local function environment()
-    return (getgenv and getgenv()) or _G
-end
-
 local function mount(gui)
-    -- Preferred: stealth module (PlayerGui-first per v0.6.0 GHOST doctrine)
+    -- Preferred: stealth module (Hidden-first per v0.6.1 MUTE doctrine:
+    -- gethui/CoreGui are not enumerable by game scripts at all).
     if StealthRef and StealthRef.MountScreenGui then
         local ok, kind = pcall(StealthRef.MountScreenGui, gui)
         if ok and kind then return true end
     end
 
-    -- Legacy fallback: plain PlayerGui first (proven safe in this game),
-    -- hidden roots second — mirrors the working open-source hubs.
+    -- Legacy fallback: hidden roots first, PlayerGui last (game scripts can
+    -- enumerate PlayerGui freely).
     local targets = {}
-    local player = Players.LocalPlayer
-    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
     if gethui then
         local ok, value = pcall(gethui)
         if ok and value then targets[#targets + 1] = value end
     end
     targets[#targets + 1] = CoreGui
+    local player = Players.LocalPlayer
+    if player then targets[#targets + 1] = player:FindFirstChildOfClass("PlayerGui") end
 
     for _, target in ipairs(targets) do
         if target then
@@ -72,33 +74,32 @@ local function gradient(parent, first, second, rotation)
 end
 
 local function loadIconAsync(url, callback)
-    local env = environment()
-    if env.MilfaCheatHUBIconAsset then
-        callback(env.MilfaCheatHUBIconAsset)
+    if IconAsset then
+        callback(IconAsset)
         return
     end
 
-    if env.MilfaCheatHUBIconLoading then
+    if IconLoading then
         task.spawn(function()
             for _ = 1, 80 do
-                if env.MilfaCheatHUBIconAsset then
-                    callback(env.MilfaCheatHUBIconAsset)
+                if IconAsset then
+                    callback(IconAsset)
                     return
                 end
-                if not env.MilfaCheatHUBIconLoading then return end
+                if not IconLoading then return end
                 task.wait(0.1)
             end
         end)
         return
     end
 
-    env.MilfaCheatHUBIconLoading = true
+    IconLoading = true
     task.spawn(function()
         local asset
         if writefile and getcustomasset then
             local requestFn = request or http_request or (syn and syn.request)
             if requestFn then
-                local folder = "MilfaCheatHUB"
+                local folder = "mh_cache"
                 local path = folder .. "/icon.png"
                 pcall(function()
                     if makefolder and not (isfolder and isfolder(folder)) then makefolder(folder) end
@@ -112,8 +113,8 @@ local function loadIconAsync(url, callback)
                 if ok then asset = result end
             end
         end
-        env.MilfaCheatHUBIconAsset = asset
-        env.MilfaCheatHUBIconLoading = false
+        IconAsset = asset
+        IconLoading = false
         if asset then callback(asset) end
     end)
 end
@@ -139,18 +140,22 @@ local function createLogo(parent, config, size, position, circular)
     fallback.TextSize = math.max(16, math.floor(size.X.Offset * 0.5))
     fallback.Parent = holder
 
-    loadIconAsync(config.IconUrl, function(asset)
-        if not holder.Parent then return end
-        fallback.Visible = false
-        local image = Instance.new("ImageLabel")
-        image.Size = UDim2.new(1, -6, 1, -6)
-        image.Position = UDim2.fromOffset(3, 3)
-        image.BackgroundTransparency = 1
-        image.Image = asset
-        image.ScaleType = Enum.ScaleType.Fit
-        image.Parent = holder
-        corner(image, circular and 999 or 8)
-    end)
+    -- Иконка тянется ТОЛЬКО по флагу LoadIcon: writefile/getcustomasset/
+    -- лишний HttpGet — дополнительные следы. По умолчанию выключена (логотип "M").
+    if config.Settings and config.Settings.LoadIcon then
+        loadIconAsync(config.IconUrl, function(asset)
+            if not holder.Parent then return end
+            fallback.Visible = false
+            local image = Instance.new("ImageLabel")
+            image.Size = UDim2.new(1, -6, 1, -6)
+            image.Position = UDim2.fromOffset(3, 3)
+            image.BackgroundTransparency = 1
+            image.Image = asset
+            image.ScaleType = Enum.ScaleType.Fit
+            image.Parent = holder
+            corner(image, circular and 999 or 8)
+        end)
+    end
     return holder
 end
 

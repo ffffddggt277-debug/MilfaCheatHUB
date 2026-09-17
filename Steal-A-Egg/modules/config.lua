@@ -1,10 +1,21 @@
 -- MilfaCheatHUB • Steal An Egg
--- Shared branding, palette, paths and defaults. v0.6.0 (GHOST minimal footprint)
+-- Shared branding, palette, paths and defaults. v0.6.1 (MUTE silent load)
+--
+-- MUTE-доктрина (v0.6.1): античит BAC читает LogService (весь консольный лог) и
+-- сканирует окружение циклом ~5с. Код BAC-7517 = детект хуков/RemoteSpy-подобной
+-- активности; кик в v0.4.0 пришёл ДАЖЕ БЕЗ GUI — единственными следами были
+-- печать "[MilfaCheatHUB]" в консоль и ключи getgenv со словом "Cheat".
+-- Поэтому v0.6.1:
+--   * НОЛЬ print/warn при загрузке (печать = след в LogService)
+--   * состояние в getgenv под ОДНИМ случайным ключом без слов-сигнатур
+--   * GUI грузится СКРЫТЫМ (gethui/CoreGui), PlayerGui — последнее средство
+--   * HeadlessLoad: загрузка вообще без GUI, вызов — 3 пальца по экрану /
+--     RightControl / чат-команда
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.6.0",
+    Version = "0.6.1",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -125,14 +136,18 @@ return {
         AutoServerHop = false,
         HopEmptyRuns = 12,
 
-        -- Stealth (GHOST doctrine: minimal footprint, zero hooks on load)
+        -- Stealth (MUTE doctrine: silent load, hidden mount, zero hooks)
         SafeTeleport = true,       -- glide вместо мгновенных CFrame-прыжков
         GlideSpeed = 48,           -- скорость glide, ст/с (держи < 70)
         HumanizeDelays = true,     -- случайный джиттер всех задержек
         StealthSpeed = false,      -- скорость через CFrame, WalkSpeed не трогаем
         StealthSpeedValue = 32,    -- ст/с для стелс-скорости (держи < 60)
         MaxHatchPerTick = 4,       -- лимит AskHatch за такт (было 8)
-        GuiMount = "PlayerGui",    -- PlayerGui (проверено рабочими хабами) | Hidden | Auto
+        HeadlessLoad = true,       -- загрузка БЕЗ GUI и лоадера; вызов: 3 пальца / RightControl / чат
+        DebugLogs = false,         -- печать в консоль (ПОМНИ: LogService читается античитом!)
+        LoadIcon = false,          -- тянуть иконку (writefile/getcustomasset оставляют следы)
+        GuiMount = "Hidden",       -- Hidden = gethui/CoreGui (невидимы игровым сканерам) | PlayerGui | Auto
+        ChatCommand = "/e mh",     -- команда чата для вызова GUI в headless-режиме
         BacAutoBypass = false,     -- НЕ включать агрессивный обход BAC при загрузке
         FastPrompt = false,        -- HoldDuration=0 у ProximityPrompt «CarryAreaEgg»
         RigSyncCut = false,        -- отключить клиентские обработчики RE/RigSync/Refresh
