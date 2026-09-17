@@ -592,7 +592,7 @@ function UI.new(config, stealth)
 
     function self:AddButton(tab, text, callback)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -2, 0, 34)
+        button.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         button.BackgroundColor3 = colors.Panel2
         button.BorderSizePixel = 0
         button.Text = "  ◆  " .. text
@@ -618,7 +618,7 @@ function UI.new(config, stealth)
     function self:AddToggle(tab, text, default, callback)
         local state = default == true
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -2, 0, 34)
+        button.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         button.BackgroundColor3 = colors.Panel
         button.BorderSizePixel = 0
         button.Text = ""
@@ -637,14 +637,14 @@ function UI.new(config, stealth)
         label.Parent = button
 
         local track = Instance.new("Frame")
-        track.Size = UDim2.fromOffset(34, 18)
-        track.Position = UDim2.new(1, -44, 0.5, -9)
+        track.Size = UDim2.fromOffset(40, 24)
+        track.Position = UDim2.new(1, -50, 0.5, -12)
         track.BorderSizePixel = 0
         track.Parent = button
         corner(track, 999)
 
         local knob = Instance.new("Frame")
-        knob.Size = UDim2.fromOffset(14, 14)
+        knob.Size = UDim2.fromOffset(18, 18)
         knob.Position = UDim2.fromOffset(2, 2)
         knob.BackgroundColor3 = colors.Text
         knob.BorderSizePixel = 0
@@ -654,7 +654,7 @@ function UI.new(config, stealth)
         local function render(animated)
             local info = TweenInfo.new(animated and 0.16 or 0)
             TweenService:Create(track, info, {BackgroundColor3 = state and tab.Accent or colors.Panel2}):Play()
-            TweenService:Create(knob, info, {Position = state and UDim2.fromOffset(18, 2) or UDim2.fromOffset(2, 2)}):Play()
+            TweenService:Create(knob, info, {Position = state and UDim2.fromOffset(20, 3) or UDim2.fromOffset(3, 3)}):Play()
             label.TextColor3 = state and tab.Accent or colors.Text
         end
         button.MouseButton1Click:Connect(function()
@@ -694,7 +694,7 @@ function UI.new(config, stealth)
     function self:AddSlider(tab, text, min, max, default, suffix, callback)
         local value = math.clamp(tonumber(default) or min, min, max)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, -2, 0, 34)
+        row.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         row.BackgroundColor3 = colors.Panel
         row.BackgroundTransparency = 0.08
         row.BorderSizePixel = 0
@@ -703,7 +703,7 @@ function UI.new(config, stealth)
         stroke(row, colors.Border, 1, 0.38)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -136, 1, 0)
+        label.Size = UDim2.new(1, -150, 1, 0)
         label.Position = UDim2.fromOffset(11, 0)
         label.BackgroundTransparency = 1
         label.Text = text
@@ -715,8 +715,8 @@ function UI.new(config, stealth)
         label.Parent = row
 
         local valueLabel = Instance.new("TextLabel")
-        valueLabel.Size = UDim2.fromOffset(44, 34)
-        valueLabel.Position = UDim2.new(1, -48, 0, 0)
+        valueLabel.Size = UDim2.fromOffset(48, 44)
+        valueLabel.Position = UDim2.new(1, -56, 0, 0)
         valueLabel.BackgroundTransparency = 1
         valueLabel.TextColor3 = tab.Accent
         valueLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -725,8 +725,8 @@ function UI.new(config, stealth)
         valueLabel.Parent = row
 
         local track = Instance.new("Frame")
-        track.Size = UDim2.fromOffset(76, 6)
-        track.Position = UDim2.new(1, -130, 0.5, -3)
+        track.Size = UDim2.fromOffset(96, 12)
+        track.Position = UDim2.new(1, -148, 0.5, -6)
         track.BackgroundColor3 = colors.Panel2
         track.BorderSizePixel = 0
         track.Parent = row
@@ -753,6 +753,13 @@ function UI.new(config, stealth)
             if fire and callback then callback(value) end
         end
 
+        -- старт драга со ВСЕЙ строки: на телефоне попасть в 12px трек сложно
+        row.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                fromX(input.Position.X, true)
+            end
+        end)
         track.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
@@ -842,12 +849,12 @@ function UI.new(config, stealth)
 
     function self:AddDropdown(tab, text, options, default, onSelect)
         local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -2, 0, 34)
+        container.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         container.BackgroundTransparency = 1
         container.Parent = tab.Page
 
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, 0, 0, 34)
+        row.Size = UDim2.new(1, 0, 0, 44)
         row.BackgroundColor3 = colors.Panel
         row.BackgroundTransparency = 0.08
         row.BorderSizePixel = 0
@@ -869,7 +876,7 @@ function UI.new(config, stealth)
         label.Parent = row
 
         local valueLabel = Instance.new("TextLabel")
-        valueLabel.Size = UDim2.fromOffset(90, 34)
+        valueLabel.Size = UDim2.fromOffset(90, 44)
         valueLabel.Position = UDim2.new(1, -106, 0, 0)
         valueLabel.BackgroundTransparency = 1
         valueLabel.Text = tostring(default or options[1] or "")
@@ -891,8 +898,8 @@ function UI.new(config, stealth)
         arrow.Parent = row
 
         local listFrame = Instance.new("Frame")
-        listFrame.Position = UDim2.fromOffset(0, 36)
-        listFrame.Size = UDim2.new(1, 0, 0, #options * 26 + 4)
+        listFrame.Position = UDim2.fromOffset(0, 46)
+        listFrame.Size = UDim2.new(1, 0, 0, #options * 30 + 4)
         listFrame.BackgroundColor3 = colors.Panel2
         listFrame.BorderSizePixel = 0
         listFrame.Visible = false

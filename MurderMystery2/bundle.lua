@@ -22,7 +22,7 @@ M["modules/config.lua"] = [====[
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.4.0",
+    Version = "0.4.1",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
@@ -1389,7 +1389,7 @@ function UI.new(config, stealth)
 
     function self:AddButton(tab, text, callback)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -2, 0, 34)
+        button.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         button.BackgroundColor3 = colors.Panel2
         button.BorderSizePixel = 0
         button.Text = "  ◆  " .. text
@@ -1415,7 +1415,7 @@ function UI.new(config, stealth)
     function self:AddToggle(tab, text, default, callback)
         local state = default == true
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -2, 0, 34)
+        button.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         button.BackgroundColor3 = colors.Panel
         button.BorderSizePixel = 0
         button.Text = ""
@@ -1434,14 +1434,14 @@ function UI.new(config, stealth)
         label.Parent = button
 
         local track = Instance.new("Frame")
-        track.Size = UDim2.fromOffset(34, 18)
-        track.Position = UDim2.new(1, -44, 0.5, -9)
+        track.Size = UDim2.fromOffset(40, 24)
+        track.Position = UDim2.new(1, -50, 0.5, -12)
         track.BorderSizePixel = 0
         track.Parent = button
         corner(track, 999)
 
         local knob = Instance.new("Frame")
-        knob.Size = UDim2.fromOffset(14, 14)
+        knob.Size = UDim2.fromOffset(18, 18)
         knob.Position = UDim2.fromOffset(2, 2)
         knob.BackgroundColor3 = colors.Text
         knob.BorderSizePixel = 0
@@ -1451,7 +1451,7 @@ function UI.new(config, stealth)
         local function render(animated)
             local info = TweenInfo.new(animated and 0.16 or 0)
             TweenService:Create(track, info, {BackgroundColor3 = state and tab.Accent or colors.Panel2}):Play()
-            TweenService:Create(knob, info, {Position = state and UDim2.fromOffset(18, 2) or UDim2.fromOffset(2, 2)}):Play()
+            TweenService:Create(knob, info, {Position = state and UDim2.fromOffset(20, 3) or UDim2.fromOffset(3, 3)}):Play()
             label.TextColor3 = state and tab.Accent or colors.Text
         end
         button.MouseButton1Click:Connect(function()
@@ -1491,7 +1491,7 @@ function UI.new(config, stealth)
     function self:AddSlider(tab, text, min, max, default, suffix, callback)
         local value = math.clamp(tonumber(default) or min, min, max)
         local row = Instance.new("Frame")
-        row.Size = UDim2.new(1, -2, 0, 34)
+        row.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         row.BackgroundColor3 = colors.Panel
         row.BackgroundTransparency = 0.08
         row.BorderSizePixel = 0
@@ -1500,7 +1500,7 @@ function UI.new(config, stealth)
         stroke(row, colors.Border, 1, 0.38)
 
         local label = Instance.new("TextLabel")
-        label.Size = UDim2.new(1, -136, 1, 0)
+        label.Size = UDim2.new(1, -150, 1, 0)
         label.Position = UDim2.fromOffset(11, 0)
         label.BackgroundTransparency = 1
         label.Text = text
@@ -1512,8 +1512,8 @@ function UI.new(config, stealth)
         label.Parent = row
 
         local valueLabel = Instance.new("TextLabel")
-        valueLabel.Size = UDim2.fromOffset(44, 34)
-        valueLabel.Position = UDim2.new(1, -48, 0, 0)
+        valueLabel.Size = UDim2.fromOffset(48, 44)
+        valueLabel.Position = UDim2.new(1, -56, 0, 0)
         valueLabel.BackgroundTransparency = 1
         valueLabel.TextColor3 = tab.Accent
         valueLabel.TextXAlignment = Enum.TextXAlignment.Right
@@ -1522,8 +1522,8 @@ function UI.new(config, stealth)
         valueLabel.Parent = row
 
         local track = Instance.new("Frame")
-        track.Size = UDim2.fromOffset(76, 6)
-        track.Position = UDim2.new(1, -130, 0.5, -3)
+        track.Size = UDim2.fromOffset(96, 12)
+        track.Position = UDim2.new(1, -148, 0.5, -6)
         track.BackgroundColor3 = colors.Panel2
         track.BorderSizePixel = 0
         track.Parent = row
@@ -1550,6 +1550,13 @@ function UI.new(config, stealth)
             if fire and callback then callback(value) end
         end
 
+        -- старт драга со ВСЕЙ строки: на телефоне попасть в 12px трек сложно
+        row.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                fromX(input.Position.X, true)
+            end
+        end)
         track.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
@@ -1639,12 +1646,12 @@ function UI.new(config, stealth)
 
     function self:AddDropdown(tab, text, options, default, onSelect)
         local container = Instance.new("Frame")
-        container.Size = UDim2.new(1, -2, 0, 34)
+        container.Size = UDim2.new(1, -2, 0, 44) -- mobile touch target 44pt+
         container.BackgroundTransparency = 1
         container.Parent = tab.Page
 
         local row = Instance.new("TextButton")
-        row.Size = UDim2.new(1, 0, 0, 34)
+        row.Size = UDim2.new(1, 0, 0, 44)
         row.BackgroundColor3 = colors.Panel
         row.BackgroundTransparency = 0.08
         row.BorderSizePixel = 0
@@ -1666,7 +1673,7 @@ function UI.new(config, stealth)
         label.Parent = row
 
         local valueLabel = Instance.new("TextLabel")
-        valueLabel.Size = UDim2.fromOffset(90, 34)
+        valueLabel.Size = UDim2.fromOffset(90, 44)
         valueLabel.Position = UDim2.new(1, -106, 0, 0)
         valueLabel.BackgroundTransparency = 1
         valueLabel.Text = tostring(default or options[1] or "")
@@ -1688,8 +1695,8 @@ function UI.new(config, stealth)
         arrow.Parent = row
 
         local listFrame = Instance.new("Frame")
-        listFrame.Position = UDim2.fromOffset(0, 36)
-        listFrame.Size = UDim2.new(1, 0, 0, #options * 26 + 4)
+        listFrame.Position = UDim2.fromOffset(0, 46)
+        listFrame.Size = UDim2.new(1, 0, 0, #options * 30 + 4)
         listFrame.BackgroundColor3 = colors.Panel2
         listFrame.BorderSizePixel = 0
         listFrame.Visible = false
@@ -2110,7 +2117,7 @@ return UI
 
 M["modules/roles.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Role detection core v0.4.0 (FIXED against live scripts).
+-- Role detection core v0.4.1 (FIXED against live scripts).
 --
 -- ПРИЧИНА КРАСНЫХ КРУГОВ v0.2.0: удалённый поиск был НЕ рекурсивным, а
 -- GetPlayerData лежит НЕ в корне ReplicatedStorage (он под Remotes/Extras —
@@ -2432,6 +2439,7 @@ function Roles.Shutdown()
     end
     connections = {}
     Roles._pushConnected = false
+    Roles._roundBound = false -- после рестарта триггеры раунда обязаны перепривязаться
     refreshThread = nil
 end
 
@@ -2444,67 +2452,154 @@ return Roles
 
 M["modules/network.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Remote registry v0.1.0 (lightweight).
+-- Remote registry v0.4.1 (reliability pass).
 --
--- MM2 networking map (verified from working hubs):
---   ReplicatedStorage.GetPlayerData                 (RemoteFunction, roles)
---   ReplicatedStorage.Remotes.Gameplay.*            (PlayerDataChanged, CoinCollected)
---   ReplicatedStorage.Remotes.Extras.GetTimer       (RemoteFunction, round timer)
---   Tool-local remotes live INSIDE the Knife/Gun tools (Stab, Events.*,
---   Gun.KnifeLocal.CreateBeam) — those are resolved at use time, not here.
+-- v0.3.x проблема: GetPlayerData ищется ТОЛЬКО прямым путём от корня, а MM2
+-- двигает его между обновлениями (подтверждено рабочими скриптами) → Resolve
+-- возвращал nil, роли пустовали. v0.4.0: после неудачи прямого пути —
+-- РЕКУРСИВНЫЙ поиск по имени с кэшем и инвалидацией при репарентинге.
+--
+-- Правила надёжности: ReplicatedStorage ждём с таймаутом; каждый обход дерева
+-- в pcall; кэш хранит слабую ссылку и проверяется на .Parent при каждом
+-- обращении; повторный поиск ограничен по времени (осциллирующие карты не
+-- должны замораживать поток).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Network = {}
+local __index = Network
+local CACHE_TTL = 30 -- секунд до принудительной перепроверки пути
 
 function Network.new(config)
-    local self = setmetatable({}, { __index = Network })
-    self.Config = config
-    self.Found = {}
-    return self
+	local self = setmetatable({}, { __index = __index })
+	self.Config = config
+	self.Found = {} -- [path] = {inst = Instance, at = os.clock()}
+	self.Searching = {}
+	return self
 end
 
 function Network:GetFolder()
-    local ok, folder = pcall(function()
-        return ReplicatedStorage:FindFirstChild("Remotes")
-    end)
-    return ok and folder or nil
+	local ok, folder = pcall(function()
+		return ReplicatedStorage:FindFirstChild("Remotes")
+	end)
+	return (ok and folder) or nil
 end
 
--- Resolve a dotted path like "Remotes.Gameplay.CoinCollected" from ReplicatedStorage.
+-- Безопасное ожидание ReplicatedStorage (на медленных мобильных клиентах
+-- сервис уже есть, но на всякий случай — таймаут вместо вечного ханга).
+function Network:WaitStorage(timeout)
+	timeout = timeout or 5
+	if ReplicatedStorage.Parent then
+		return ReplicatedStorage
+	end
+	local ok, res = pcall(function()
+		return ReplicatedStorage:WaitForChild("Remotes", timeout)
+	end)
+	return (ok and res) or nil
+end
+
+-- Рекурсивный поиск инстанса по имени (опционально по классу) с лимитом
+-- глубины и времени. Кэшируется, чтобы не обходить дерево на каждый вызов.
+function Network:FindByName(name, className, timeout)
+	timeout = timeout or 4
+	local key = name .. "|" .. tostring(className)
+	local hit = self.Found[key]
+	if hit and hit.inst and hit.inst.Parent and (os.clock() - hit.at) < CACHE_TTL then
+		return hit.inst
+	end
+	if self.Searching[key] then
+		return nil
+	end
+	self.Searching[key] = true
+	local deadline = os.clock() + timeout
+	local found
+	local function scan(root)
+		if found or os.clock() > deadline then
+			return
+		end
+		local ok, kids = pcall(function()
+			return root:GetChildren()
+		end)
+		if not ok then
+			return
+		end
+		for _, child in ipairs(kids) do
+			if child.Name == name and (not className or child.ClassName == className) then
+				found = child
+				return
+			end
+		end
+		for _, child in ipairs(kids) do
+			scan(child)
+			if found then
+				return
+			end
+		end
+	end
+	pcall(scan, ReplicatedStorage)
+	self.Searching[key] = nil
+	if found then
+		self.Found[key] = { inst = found, at = os.clock() }
+	end
+	return found
+end
+
+-- Resolve "Remotes.Gameplay.CoinCollected": прямой путь, при промахе —
+-- рекурсивный поиск ПОСЛЕДНЕГО сегмента (имя уникально в пределах RS).
 function Network:Resolve(path)
-    if self.Found[path] and self.Found[path].Parent then
-        return self.Found[path]
-    end
-    local current = ReplicatedStorage
-    local ok = true
-    for segment in string.gmatch(path, "[^.]+") do
-        local found = nil
-        pcall(function() found = current:FindFirstChild(segment) end)
-        if not found then
-            ok = false
-            break
-        end
-        current = found
-    end
-    local result = ok and current or nil
-    self.Found[path] = result
-    return result
+	local hit = self.Found[path]
+	if hit and hit.inst and hit.inst.Parent and (os.clock() - hit.at) < CACHE_TTL then
+		return hit.inst
+	end
+	local current = ReplicatedStorage
+	local direct = true
+	for segment in string.gmatch(path, "[^.]+") do
+		local okChild, found = pcall(function()
+			return current:FindFirstChild(segment)
+		end)
+		if not okChild or not found then
+			direct = false
+			break
+		end
+		current = found
+	end
+	if direct and current ~= ReplicatedStorage then
+		self.Found[path] = { inst = current, at = os.clock() }
+		return current
+	end
+	-- фолбэк: рекурсивно ищем последний сегмент
+	local last = string.match(path, "([^.]+)$")
+	if last then
+		local inst = self:FindByName(last, nil, 3)
+		if inst then
+			self.Found[path] = { inst = inst, at = os.clock() }
+			return inst
+		end
+	end
+	self.Found[path] = nil
+	return nil
 end
 
+-- Дамп состояния ремоутов для вкладки Система (диагностика).
 function Network:Summary()
-    local checks = {
-        { "GetPlayerData", "GetPlayerData", true },
-        { "PlayerDataChanged", "Remotes.Gameplay.PlayerDataChanged", false },
-        { "CoinCollected", "Remotes.Gameplay.CoinCollected", false },
-        { "GetTimer", "Remotes.Extras.GetTimer", true },
-    }
-    local lines = {}
-    for _, entry in ipairs(checks) do
-        local instance = self:Resolve(entry[2])
-        lines[#lines + 1] = entry[1] .. ": " .. (instance and "OK" or "нет")
-    end
-    return "Ремоуты — " .. table.concat(lines, " • ")
+	local checks = {
+		{ "GetPlayerData", "GetPlayerData", true },
+		{ "PlayerDataChanged", "Remotes.Gameplay.PlayerDataChanged", false },
+		{ "CoinCollected", "Remotes.Gameplay.CoinCollected", false },
+		{ "GetTimer", "Remotes.Extras.GetTimer", true },
+		{ "PlayEmote", "Remotes.PlayEmote", false },
+		{ "FakeGun", "Remotes.Gameplay.FakeGun", false },
+	}
+	local lines = {}
+	for _, entry in ipairs(checks) do
+		local label, path = entry[1], entry[2]
+		local inst = self:Resolve(path)
+		if not inst and entry[3] then
+			inst = self:FindByName(label, nil, 2)
+		end
+		lines[#lines + 1] = label .. ": " .. (inst and "OK" or "нет")
+	end
+	return "Ремоуты — " .. table.concat(lines, " • ")
 end
 
 return Network
@@ -3511,7 +3606,7 @@ return Farm
 
 M["modules/combat.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Combat v0.4.0 (FIXED against live scripts: KittyHub/R3TH/StyearX/MM2 Mods).
+-- Combat v0.4.1 (FIXED against live scripts: KittyHub/R3TH/StyearX/MM2 Mods).
 --
 -- Причины красных кругов v0.2.0 и как теперь:
 --   * удар ножом: ремоуты Events.KnifeStabbed/HandleTouched НЕ наносят урон в
@@ -4095,6 +4190,23 @@ local function dodgeNow(myRoot, threatPosition)
     Combat.Status = "dodge!"
 end
 
+-- Профили AutoDodge (аудит v0.4.0: вместо 4 контролов — тогл + один профиль;
+-- тонкую ручную настройку прячем в Расширенные).
+local DODGE_PROFILES = {
+        Calm       = { Power = 10, Cooldown = 1.6, Radius = 38 },
+        Balanced   = { Power = 12, Cooldown = 1.2, Radius = 45 },
+        Aggressive = { Power = 16, Cooldown = 0.8, Radius = 55 },
+}
+
+function Combat.SetDodgeProfile(name)
+        local profile = DODGE_PROFILES[name] or DODGE_PROFILES.Balanced
+        if ConfigRef and ConfigRef.Settings then
+                ConfigRef.Settings.DodgePower = profile.Power
+                ConfigRef.Settings.DodgeCooldown = profile.Cooldown
+                ConfigRef.Settings.DodgeRadius = profile.Radius
+        end
+end
+
 local function dodgeLoop()
     while dodgeRunning do
         local _, myRoot = getCharacterParts()
@@ -4156,7 +4268,7 @@ end
 function Combat.SetDodge(value)
     Combat.DodgeEnabled = value and true or false
     ConfigRef.Settings.AutoDodge = Combat.DodgeEnabled
-    if value and not dodgeRunning then
+    if value and not dodgeRunning and #dodgeConnections == 0 then
         dodgeRunning = true
         dodgeConnections[#dodgeConnections + 1] = workspace.DescendantAdded:Connect(function(descendant)
             if dodgeRunning and descendant:IsA("BasePart") and isDodgeName(descendant.Name) then
@@ -5423,8 +5535,9 @@ return Beta
 
 M["modules/features.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Feature wiring v0.4.0. GUI почищен (аудит NEX + разметка юзера):
--- 6 вкладок: ИГРОКИ / БОЙ / АВТО / ПЕРСОНАЖ / ТРОЛЛИНГ / СИСТЕМА.
+-- Feature wiring v0.4.1. GUI почищен (аудит NEX + разметка юзера):
+-- 7 вкладок: ГЛАВНАЯ / ИГРОКИ / БОЙ / АВТО / ПЕРСОНАЖ / ТРОЛЛИНГ / СИСТЕМА.
+-- ГЛАВНАЯ — статус раунда/ролей/соединения + быстрые действия (новичок сразу видит главное).
 -- Убрано: дубль-тоглы SheriffAim/MurderAim (кнопки делают то же),
 -- слайдеры AimMaxDistance/AuraDelay/DodgeRadius/DodgeCooldown/FarmDelay/
 -- PistolSpeed/PistolReturnDelay/EspMaxDistance (адекватные дефолты вшиты),
@@ -5477,12 +5590,35 @@ function Features:Build()
     local colors = self.Config.Colors
     local settings = self.Config.Settings
 
+    local homeTab = self.UI:CreateTab("Главная", "HOME", colors.Accent)
     local playersTab = self.UI:CreateTab("Игроки", "ESP", colors.ESP)
     local combatTab = self.UI:CreateTab("Бой", "HIT", colors.Combat)
     local autoTab = self.UI:CreateTab("Авто", "BOT", colors.Combat)
     local playerTab = self.UI:CreateTab("Персонаж", "PLR", colors.Player)
     local trollTab = self.UI:CreateTab("Троллинг", "TRL", colors.Misc)
     local systemTab = self.UI:CreateTab("Система", "SYS", colors.Misc)
+
+    -- ============================== ГЛАВНАЯ ==============================
+    self.UI:AddHeading(homeTab, "Статус раунда")
+    self.HomeRole = self.UI:AddText(homeTab, "Роли", "определяю...")
+    self.HomeTimer = self.UI:AddText(homeTab, "Таймер", "—")
+    self.HomeFarm = self.UI:AddText(homeTab, "Фарм", "выключено")
+    self.HomeCombat = self.UI:AddText(homeTab, "Бой", "выключено")
+    self.UI:AddSection(homeTab, "Соединение")
+    self.UI:AddText(homeTab, "Ремоуты", self.Network:Summary())
+    self.UI:AddSection(homeTab, "Быстрые действия")
+    self.UI:AddButton(homeTab, "Выстрел в маньяка (шериф)", function()
+        local ok, message = self.Combat.SheriffAimShot()
+        if self.HomeCombat then self.HomeCombat:Set("SheriffAim: " .. tostring(message)) end
+    end)
+    self.UI:AddButton(homeTab, "Бросок ножа в шерифа (маньяк)", function()
+        local ok, message = self.Combat.MurderAimThrow()
+        if self.HomeCombat then self.HomeCombat:Set("MurderAim: " .. tostring(message)) end
+    end)
+    self.UI:AddButton(homeTab, "Подобрать пистолет", function()
+        local ok, message = self:GrabGunNow()
+        if self.HomeFarm then self.HomeFarm:Set(tostring(message)) end
+    end)
 
     -- ============================== ИГРОКИ ==============================
     self.UI:AddHeading(playersTab, "Кто есть кто (видно до ножа)")
@@ -5774,7 +5910,9 @@ function Features:UpdateRoleStatus()
     parts[#parts + 1] = "шериф: " .. (#sheriff > 0 and table.concat(sheriff, ", ") or "?")
     if #hero > 0 then parts[#parts + 1] = "герой: " .. table.concat(hero, ", ") end
     if self.RoleStatus then
-        self.RoleStatus:Set(table.concat(parts, " • "))
+        local text = table.concat(parts, " • ")
+        self._lastRoleText = text
+        self.RoleStatus:Set(text)
     end
 end
 
@@ -5861,23 +5999,32 @@ function Features:Start()
             local settings = self.Config.Settings
             -- роли обновляет свой цикл; подстраховка здесь
             pcall(function() self:UpdateRoleStatus() end)
+            -- зеркалим статусы на ГЛАВНУЮ
+            if self.HomeRole and self._lastRoleText then
+                pcall(function() self.HomeRole:Set(self._lastRoleText) end)
+            end
             if self.FarmStatus then pcall(function() self.FarmStatus:Set(self.Farm.Summary()) end) end
+            if self.HomeFarm then pcall(function() self.HomeFarm:Set(self.Farm.Summary()) end) end
             if self.CombatStatus and self.Combat.Status and self.Combat.Status ~= "" then
                 pcall(function() self.CombatStatus:Set(self.Combat.Status) end)
             end
+            if self.HomeCombat then
+                pcall(function() self.HomeCombat:Set(self.Combat.Status and self.Combat.Status ~= "" and self.Combat.Status or "выключено") end)
+            end
 
-            -- Таймер раунда (карточка + плавающий HUD)
+            -- Таймер раунда (карточка + плавающий HUD + зеркало на ГЛАВНУЮ)
             pcall(function()
                 local seconds = self.World.GetTimer()
-                if self.TimerStatus then
-                    if not seconds then
-                        self.TimerStatus:Set("таймер недоступен / лобби")
-                    elseif seconds <= 1 then
-                        self.TimerStatus:Set("раунд закончился")
-                    else
-                        self.TimerStatus:Set(formatTimer(seconds) .. " до конца раунда")
-                    end
+                local timerText
+                if not seconds then
+                    timerText = "таймер недоступен / лобби"
+                elseif seconds <= 1 then
+                    timerText = "раунд закончился"
+                else
+                    timerText = formatTimer(seconds) .. " до конца раунда"
                 end
+                if self.TimerStatus then self.TimerStatus:Set(timerText) end
+                if self.HomeTimer then self.HomeTimer:Set(timerText) end
                 if self.Hud then
                     self.Hud:SetTime(formatTimer(seconds))
                     local roleText = "роль: " .. (self.Roles.LocalRole and self.Roles.Label(self.Roles.LocalRole) or "?")

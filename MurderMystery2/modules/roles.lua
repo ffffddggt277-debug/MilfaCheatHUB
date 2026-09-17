@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Role detection core v0.4.0 (FIXED against live scripts).
+-- Role detection core v0.4.1 (FIXED against live scripts).
 --
 -- ПРИЧИНА КРАСНЫХ КРУГОВ v0.2.0: удалённый поиск был НЕ рекурсивным, а
 -- GetPlayerData лежит НЕ в корне ReplicatedStorage (он под Remotes/Extras —
@@ -321,6 +321,7 @@ function Roles.Shutdown()
     end
     connections = {}
     Roles._pushConnected = false
+    Roles._roundBound = false -- после рестарта триггеры раунда обязаны перепривязаться
     refreshThread = nil
 end
 

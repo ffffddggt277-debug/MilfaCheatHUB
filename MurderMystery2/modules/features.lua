@@ -1,6 +1,7 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Feature wiring v0.4.0. GUI почищен (аудит NEX + разметка юзера):
--- 6 вкладок: ИГРОКИ / БОЙ / АВТО / ПЕРСОНАЖ / ТРОЛЛИНГ / СИСТЕМА.
+-- Feature wiring v0.4.1. GUI почищен (аудит NEX + разметка юзера):
+-- 7 вкладок: ГЛАВНАЯ / ИГРОКИ / БОЙ / АВТО / ПЕРСОНАЖ / ТРОЛЛИНГ / СИСТЕМА.
+-- ГЛАВНАЯ — статус раунда/ролей/соединения + быстрые действия (новичок сразу видит главное).
 -- Убрано: дубль-тоглы SheriffAim/MurderAim (кнопки делают то же),
 -- слайдеры AimMaxDistance/AuraDelay/DodgeRadius/DodgeCooldown/FarmDelay/
 -- PistolSpeed/PistolReturnDelay/EspMaxDistance (адекватные дефолты вшиты),
@@ -53,12 +54,35 @@ function Features:Build()
     local colors = self.Config.Colors
     local settings = self.Config.Settings
 
+    local homeTab = self.UI:CreateTab("Главная", "HOME", colors.Accent)
     local playersTab = self.UI:CreateTab("Игроки", "ESP", colors.ESP)
     local combatTab = self.UI:CreateTab("Бой", "HIT", colors.Combat)
     local autoTab = self.UI:CreateTab("Авто", "BOT", colors.Combat)
     local playerTab = self.UI:CreateTab("Персонаж", "PLR", colors.Player)
     local trollTab = self.UI:CreateTab("Троллинг", "TRL", colors.Misc)
     local systemTab = self.UI:CreateTab("Система", "SYS", colors.Misc)
+
+    -- ============================== ГЛАВНАЯ ==============================
+    self.UI:AddHeading(homeTab, "Статус раунда")
+    self.HomeRole = self.UI:AddText(homeTab, "Роли", "определяю...")
+    self.HomeTimer = self.UI:AddText(homeTab, "Таймер", "—")
+    self.HomeFarm = self.UI:AddText(homeTab, "Фарм", "выключено")
+    self.HomeCombat = self.UI:AddText(homeTab, "Бой", "выключено")
+    self.UI:AddSection(homeTab, "Соединение")
+    self.UI:AddText(homeTab, "Ремоуты", self.Network:Summary())
+    self.UI:AddSection(homeTab, "Быстрые действия")
+    self.UI:AddButton(homeTab, "Выстрел в маньяка (шериф)", function()
+        local ok, message = self.Combat.SheriffAimShot()
+        if self.HomeCombat then self.HomeCombat:Set("SheriffAim: " .. tostring(message)) end
+    end)
+    self.UI:AddButton(homeTab, "Бросок ножа в шерифа (маньяк)", function()
+        local ok, message = self.Combat.MurderAimThrow()
+        if self.HomeCombat then self.HomeCombat:Set("MurderAim: " .. tostring(message)) end
+    end)
+    self.UI:AddButton(homeTab, "Подобрать пистолет", function()
+        local ok, message = self:GrabGunNow()
+        if self.HomeFarm then self.HomeFarm:Set(tostring(message)) end
+    end)
 
     -- ============================== ИГРОКИ ==============================
     self.UI:AddHeading(playersTab, "Кто есть кто (видно до ножа)")
@@ -350,7 +374,9 @@ function Features:UpdateRoleStatus()
     parts[#parts + 1] = "шериф: " .. (#sheriff > 0 and table.concat(sheriff, ", ") or "?")
     if #hero > 0 then parts[#parts + 1] = "герой: " .. table.concat(hero, ", ") end
     if self.RoleStatus then
-        self.RoleStatus:Set(table.concat(parts, " • "))
+        local text = table.concat(parts, " • ")
+        self._lastRoleText = text
+        self.RoleStatus:Set(text)
     end
 end
 
@@ -437,23 +463,32 @@ function Features:Start()
             local settings = self.Config.Settings
             -- роли обновляет свой цикл; подстраховка здесь
             pcall(function() self:UpdateRoleStatus() end)
+            -- зеркалим статусы на ГЛАВНУЮ
+            if self.HomeRole and self._lastRoleText then
+                pcall(function() self.HomeRole:Set(self._lastRoleText) end)
+            end
             if self.FarmStatus then pcall(function() self.FarmStatus:Set(self.Farm.Summary()) end) end
+            if self.HomeFarm then pcall(function() self.HomeFarm:Set(self.Farm.Summary()) end) end
             if self.CombatStatus and self.Combat.Status and self.Combat.Status ~= "" then
                 pcall(function() self.CombatStatus:Set(self.Combat.Status) end)
             end
+            if self.HomeCombat then
+                pcall(function() self.HomeCombat:Set(self.Combat.Status and self.Combat.Status ~= "" and self.Combat.Status or "выключено") end)
+            end
 
-            -- Таймер раунда (карточка + плавающий HUD)
+            -- Таймер раунда (карточка + плавающий HUD + зеркало на ГЛАВНУЮ)
             pcall(function()
                 local seconds = self.World.GetTimer()
-                if self.TimerStatus then
-                    if not seconds then
-                        self.TimerStatus:Set("таймер недоступен / лобби")
-                    elseif seconds <= 1 then
-                        self.TimerStatus:Set("раунд закончился")
-                    else
-                        self.TimerStatus:Set(formatTimer(seconds) .. " до конца раунда")
-                    end
+                local timerText
+                if not seconds then
+                    timerText = "таймер недоступен / лобби"
+                elseif seconds <= 1 then
+                    timerText = "раунд закончился"
+                else
+                    timerText = formatTimer(seconds) .. " до конца раунда"
                 end
+                if self.TimerStatus then self.TimerStatus:Set(timerText) end
+                if self.HomeTimer then self.HomeTimer:Set(timerText) end
                 if self.Hud then
                     self.Hud:SetTime(formatTimer(seconds))
                     local roleText = "роль: " .. (self.Roles.LocalRole and self.Roles.Label(self.Roles.LocalRole) or "?")

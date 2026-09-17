@@ -270,7 +270,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/Mi
 ### Murder Mystery 2 (v0.4.0)
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.4.0"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.4.1"))()
 ```
 
 ## Murder Mystery 2

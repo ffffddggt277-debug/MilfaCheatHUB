@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Combat v0.4.0 (FIXED against live scripts: KittyHub/R3TH/StyearX/MM2 Mods).
+-- Combat v0.4.1 (FIXED against live scripts: KittyHub/R3TH/StyearX/MM2 Mods).
 --
 -- Причины красных кругов v0.2.0 и как теперь:
 --   * удар ножом: ремоуты Events.KnifeStabbed/HandleTouched НЕ наносят урон в
@@ -583,6 +583,23 @@ local function dodgeNow(myRoot, threatPosition)
     Combat.Status = "dodge!"
 end
 
+-- Профили AutoDodge (аудит v0.4.0: вместо 4 контролов — тогл + один профиль;
+-- тонкую ручную настройку прячем в Расширенные).
+local DODGE_PROFILES = {
+        Calm       = { Power = 10, Cooldown = 1.6, Radius = 38 },
+        Balanced   = { Power = 12, Cooldown = 1.2, Radius = 45 },
+        Aggressive = { Power = 16, Cooldown = 0.8, Radius = 55 },
+}
+
+function Combat.SetDodgeProfile(name)
+        local profile = DODGE_PROFILES[name] or DODGE_PROFILES.Balanced
+        if ConfigRef and ConfigRef.Settings then
+                ConfigRef.Settings.DodgePower = profile.Power
+                ConfigRef.Settings.DodgeCooldown = profile.Cooldown
+                ConfigRef.Settings.DodgeRadius = profile.Radius
+        end
+end
+
 local function dodgeLoop()
     while dodgeRunning do
         local _, myRoot = getCharacterParts()
@@ -644,7 +661,7 @@ end
 function Combat.SetDodge(value)
     Combat.DodgeEnabled = value and true or false
     ConfigRef.Settings.AutoDodge = Combat.DodgeEnabled
-    if value and not dodgeRunning then
+    if value and not dodgeRunning and #dodgeConnections == 0 then
         dodgeRunning = true
         dodgeConnections[#dodgeConnections + 1] = workspace.DescendantAdded:Connect(function(descendant)
             if dodgeRunning and descendant:IsA("BasePart") and isDodgeName(descendant.Name) then
