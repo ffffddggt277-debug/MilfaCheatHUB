@@ -18,7 +18,7 @@
 
 local EXPECTED_PLACE_ID = 107778070777162
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/"
-local VERSION = "0.6.2"
+local VERSION = "0.6.3"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 

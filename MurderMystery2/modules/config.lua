@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Shared branding, palette, paths and defaults. v0.3.0
+-- Shared branding, palette, paths and defaults. v0.3.1
 --
 -- CALM-доктрина наследуется из Steal-A-Egg v0.6.2:
 --   * при загрузке печатается ТОЛЬКО голый номер версии (LogService читается
@@ -15,10 +15,14 @@
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.3.0",
+    Version = "0.3.1",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
+
+    -- Иконка хаба из корня репозитория (логотип в загрузчике/сайдбаре/
+    -- лупе-свертывании/квадратной кнопке). Качается один раз, кэшируется.
+    IconUrl = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/icon.png",
 
     Window = {
         Width = 570,
@@ -132,6 +136,7 @@ return {
         PredictionRefresh = 4,     -- период пересчёта прогноза (сек)
 
         -- HUD и мелочи
+        LoadIcon = true,           -- тянуть иконку репо (1 HttpGet + getcustomasset, кэш на диске)
         ShowTimerHud = true,       -- плавающий таймер раунда
         ShowQuickMenu = true,      -- квадратная быстрая кнопка на экране
         Tracers = false,           -- лучи к игрокам (роли)

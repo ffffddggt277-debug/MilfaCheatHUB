@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Troll pack v0.3.0 (FIXED against live scripts).
+-- Troll pack v0.3.1 (FIXED against live scripts).
 --
 -- Починено/добавлено:
 --   * Эмоции: ремоут это Remotes.PlayEmote (сразу под Remotes, рекурсивный
@@ -288,6 +288,11 @@ local function sprayOn(spray, imageId, normalId, size, part, cframe)
     return ok
 end
 
+-- Фейк-нож (метод MM2 Mods «Fake Knife»): ДВА спрея на правую руку —
+--   15093138669 на NormalId.Right и 15096522641 на NormalId.Left (в оригинале
+--   именно так: разные грани, один size 3). Туl переносится в Character
+--   ПРЯМЫМ parent (EquipTool у игрушек может сработать не на всех экзекьюторах)
+--   и возвращается в рюкзак после выстрела ремоутом.
 function Troll.FakeKnife()
     local character, _, root = getCharacterParts()
     if not character or not root then return false, "нет персонажа" end
@@ -295,16 +300,30 @@ function Troll.FakeKnife()
     if not hand then return false, "нет руки" end
     local spray = obtainSprayPaint()
     if not spray then return false, "SprayPaint недоступна" end
+    -- прямой перенос в Character (как в оригинале) + фолбэк EquipTool
+    if spray.Parent ~= character then
+        local moved = pcall(function() spray.Parent = character end)
+        if not moved or spray.Parent ~= character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then pcall(function() humanoid:EquipTool(spray) end) end
+        end
+    end
+    if spray.Parent ~= character then return false, "спрей не удалось взять в руку" end
+    local sprayRemote = spray:FindFirstChild("Remote")
     local okCount = 0
-    for _, id in ipairs(KNIFE_SPRAY_IDS) do
-        if sprayOn(spray, id, Enum.NormalId.Right, 3, hand, hand.CFrame * CFrame.new(0, 0, -0.7)) then
+    if sprayRemote and sprayRemote:IsA("RemoteEvent") then
+        local cframe = hand.CFrame * CFrame.new(0, 0, -0.7)
+        if sprayOn(spray, KNIFE_SPRAY_IDS[1], Enum.NormalId.Right, 3, hand, cframe) then
+            okCount = okCount + 1
+        end
+        if sprayOn(spray, KNIFE_SPRAY_IDS[2], Enum.NormalId.Left, 3, hand, cframe) then
             okCount = okCount + 1
         end
     end
     -- вернуть спрей в рюкзак (не мешает играть)
     pcall(function()
         local backpack = localPlayer:FindFirstChildOfClass("Backpack")
-        if spray.Parent == character and backpack then spray.Parent = backpack end
+        if backpack then spray.Parent = backpack end
     end)
     if okCount > 0 then
         return true, "фейк-нож на руке (видно всем)"
@@ -401,47 +420,53 @@ end
 function Troll.SetFakeGlitch(value)
     Troll.FakeGlitch = value and true or false
     ConfigRef.Settings.FakeGlitch = Troll.FakeGlitch
-    if value then
-        glitchThread = task.spawn(function()
-            while Troll.FakeGlitch do
-                local character, humanoid, root = getCharacterParts()
-                if humanoid and root and humanoid.Health > 0 then
-                    local roll = math.random()
-                    if roll < 0.55 then
-                        -- микроТП вбок (реплицируется — все видят дёрганья)
-                        local offset = Vector3.new(
-                            (math.random() - 0.5) * 4.4,
-                            math.random() < 0.25 and 1.6 or 0,
-                            (math.random() - 0.5) * 4.4)
-                        root.CFrame = root.CFrame + offset
-                    elseif roll < 0.75 then
-                        -- спин
-                        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(90, 270)), 0)
-                    elseif roll < 0.9 then
-                        -- дёрганье анимаций: стоп/старт всех треков
-                        pcall(function()
-                            local animator = humanoid:FindFirstChildOfClass("Animator")
-                            if animator then
-                                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                                    track:Stop(0)
-                                    task.wait(0.05)
-                                    track:Play(0.1)
-                                end
-                            end
-                        end)
-                    else
-                        -- фриз в воздухе
-                        root.Anchored = true
-                        task.wait(0.12 + math.random() * 0.2)
-                        if root.Parent then root.Anchored = false end
-                    end
-                end
-                task.wait(0.1 + math.random() * 0.2)
-            end
+    if not value then
+        -- страховка: если выключили во время «фриза в воздухе», снимаем анкор,
+        -- иначе персонаж навсегда зависает в воздухе
+        pcall(function()
+            local _, _, root = getCharacterParts()
+            if root then root.Anchored = false end
         end)
-        return true, "фейк-глитч ВКЛ (все видят дёрганья)"
+        return true, "фейк-глитч ВЫКЛ"
     end
-    return true, "фейк-глитч ВЫКЛ"
+    glitchThread = task.spawn(function()
+        while Troll.FakeGlitch do
+            local character, humanoid, root = getCharacterParts()
+            if humanoid and root and humanoid.Health > 0 then
+                local roll = math.random()
+                if roll < 0.55 then
+                    -- микроТП вбок (реплицируется — все видят дёрганья)
+                    local offset = Vector3.new(
+                        (math.random() - 0.5) * 4.4,
+                        math.random() < 0.25 and 1.6 or 0,
+                        (math.random() - 0.5) * 4.4)
+                    root.CFrame = root.CFrame + offset
+                elseif roll < 0.75 then
+                    -- спин
+                    root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(90, 270)), 0)
+                elseif roll < 0.9 then
+                    -- дёрганье анимаций: стоп/старт всех треков
+                    pcall(function()
+                        local animator = humanoid:FindFirstChildOfClass("Animator")
+                        if animator then
+                            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                track:Stop(0)
+                                task.wait(0.05)
+                                track:Play(0.1)
+                            end
+                        end
+                    end)
+                else
+                    -- фриз в воздухе
+                    root.Anchored = true
+                    task.wait(0.12 + math.random() * 0.2)
+                    if root.Parent then root.Anchored = false end
+                end
+            end
+            task.wait(0.1 + math.random() * 0.2)
+        end
+    end)
+    return true, "фейк-глитч ВКЛ (все видят дёрганья)"
 end
 
 ---------------------------------------------------------------------

@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Role detection core v0.3.0 (FIXED against live scripts).
+-- Role detection core v0.3.1 (FIXED against live scripts).
 --
 -- ПРИЧИНА КРАСНЫХ КРУГОВ v0.2.0: удалённый поиск был НЕ рекурсивным, а
 -- GetPlayerData лежит НЕ в корне ReplicatedStorage (он под Remotes/Extras —
@@ -87,9 +87,11 @@ end
 local function applyEntry(name, record)
     if type(name) ~= "string" or type(record) ~= "table" then return false end
     local role = normalizeRole(record.Role)
-    local killed = record.Killed == true or record.Dead == true
+    -- ВНИМАНИЕ (проверено по живым скриптам): Killed = «УБИЛ ли игрок кого-то»,
+    -- а НЕ «мёртв ли он». Если считать Killed смертью, маньяк исчезает с ESP
+    -- после первого убийства. Мёртвость даёт только поле Dead.
     Roles.Cache[name] = role
-    Roles.Alive[name] = not killed
+    Roles.Alive[name] = record.Dead ~= true
     if localPlayer and name == localPlayer.Name and role ~= "Unknown" then
         -- не даём случайному пушу сбить защёлкнутого маньяка на мирного
         if Roles.LocalRole ~= "Murderer" or role ~= "Innocent" then
@@ -224,6 +226,11 @@ end
 function Roles.Listen()
     if pushEvent and not Roles._pushConnected then
         Roles._pushConnected = true
+        -- переподписка на новый инстанс: старый коннект гасим (ремоуты переезжают)
+        if Roles._pushConnection then
+            pcall(function() Roles._pushConnection:Disconnect() end)
+            Roles._pushConnection = nil
+        end
         local connection = pushEvent.OnClientEvent:Connect(function(first, second)
             if type(first) == "table" then
                 applyTable(first)               -- форма 1: вся таблица
@@ -232,12 +239,14 @@ function Roles.Listen()
                 if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
             end
         end)
+        Roles._pushConnection = connection
         connections[#connections + 1] = connection
     end
 end
 
 function Roles.Start()
     if refreshThread then return end
+    Roles._running = true  -- после Shutdown() цикл обязан стартовать заново
     refreshThread = task.spawn(function()
         while Roles._running ~= false do
             pcall(Roles.Refresh)

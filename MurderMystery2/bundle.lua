@@ -6,7 +6,7 @@ local M = {}
 
 M["modules/config.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Shared branding, palette, paths and defaults. v0.3.0
+-- Shared branding, palette, paths and defaults. v0.3.1
 --
 -- CALM-доктрина наследуется из Steal-A-Egg v0.6.2:
 --   * при загрузке печатается ТОЛЬКО голый номер версии (LogService читается
@@ -22,10 +22,14 @@ M["modules/config.lua"] = [====[
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.3.0",
+    Version = "0.3.1",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
+
+    -- Иконка хаба из корня репозитория (логотип в загрузчике/сайдбаре/
+    -- лупе-свертывании/квадратной кнопке). Качается один раз, кэшируется.
+    IconUrl = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/icon.png",
 
     Window = {
         Width = 570,
@@ -139,6 +143,7 @@ return {
         PredictionRefresh = 4,     -- период пересчёта прогноза (сек)
 
         -- HUD и мелочи
+        LoadIcon = true,           -- тянуть иконку репо (1 HttpGet + getcustomasset, кэш на диске)
         ShowTimerHud = true,       -- плавающий таймер раунда
         ShowQuickMenu = true,      -- квадратная быстрая кнопка на экране
         Tracers = false,           -- лучи к игрокам (роли)
@@ -786,7 +791,7 @@ return AC
 ]====]
 
 M["modules/ui.lua"] = [====[
--- MilfaCheatHUB • compact neon interface v0.6.1 (MUTE: hidden-first mount)
+-- MilfaCheatHUB • compact neon interface v0.6.1-m (MUTE: hidden-first mount)
 
 local UI = {}
 local TweenService = game:GetService("TweenService")
@@ -883,7 +888,6 @@ local function loadIconAsync(url, callback)
 
     IconLoading = true
     task.spawn(function()
-        local asset
         if writefile and getcustomasset then
             local requestFn = request or http_request or (syn and syn.request)
             if requestFn then
@@ -892,18 +896,46 @@ local function loadIconAsync(url, callback)
                 pcall(function()
                     if makefolder and not (isfolder and isfolder(folder)) then makefolder(folder) end
                 end)
-                if not (isfile and isfile(path)) then
-                    local ok, response = pcall(requestFn, {Url = url, Method = "GET"})
-                    local body = ok and response and (response.Body or response.body)
-                    if body then pcall(writefile, path, body) end
+
+                -- Резервный CDN: raw иногда режется провайдером (мобильные сети).
+                local mirror = string.gsub(url,
+                    "^https://raw%.githubusercontent%.com/([^/]+)/([^/]+)/",
+                    "https://cdn.jsdelivr.net/gh/%1/%2@")
+
+                -- PNG-сигнатура: защита от записи HTML-ошибки/JSON в кэш
+                -- (после этого getcustomasset умирает до ручной чистки файла).
+                local function looksPng(body)
+                    return type(body) == "string" and #body > 8 and body:sub(1, 4) == "\137PNG"
                 end
+
+                local function fetch()
+                    for _, candidate in ipairs({ url, mirror }) do
+                        local ok, response = pcall(requestFn, { Url = candidate, Method = "GET" })
+                        local code = ok and response and
+                            (response.StatusCode or response.statusCode or response.code or response.status)
+                        local body = ok and response and (response.Body or response.body)
+                        if body and looksPng(body) and (code == nil or tonumber(code) == 200) then
+                            return body
+                        end
+                    end
+                    return nil
+                end
+
+                -- Кэш с прошлого запуска может быть мусором: если движок его не
+                -- принял — один раз перекачиваем и пробуем снова.
                 local ok, result = pcall(getcustomasset, path)
-                if ok then asset = result end
+                if not (ok and result) then
+                    local body = fetch()
+                    if body then
+                        pcall(writefile, path, body)
+                        ok, result = pcall(getcustomasset, path)
+                    end
+                end
+                if ok and result then IconAsset = result end
             end
         end
-        IconAsset = asset
         IconLoading = false
-        if asset then callback(asset) end
+        if IconAsset then callback(IconAsset) end
     end)
 end
 
@@ -1900,6 +1932,22 @@ function UI.new(config, stealth)
         icon.TextSize = 22
         icon.Parent = quick
 
+        -- Тот же icon.png из корня репо (тянется один раз на все логотипы).
+        if config.Settings and config.Settings.LoadIcon and config.IconUrl then
+            loadIconAsync(config.IconUrl, function(asset)
+                if not quick.Parent then return end
+                icon.Visible = false
+                local image = Instance.new("ImageLabel")
+                image.Size = UDim2.new(1, -10, 1, -10)
+                image.Position = UDim2.fromOffset(5, 5)
+                image.BackgroundTransparency = 1
+                image.Image = asset
+                image.ScaleType = Enum.ScaleType.Fit
+                image.Parent = quick
+                corner(image, 9)
+            end)
+        end
+
         -- панель действий
         local panel = Instance.new("Frame")
         panel.Name = randomGuiName()
@@ -2058,7 +2106,7 @@ return UI
 
 M["modules/roles.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Role detection core v0.3.0 (FIXED against live scripts).
+-- Role detection core v0.3.1 (FIXED against live scripts).
 --
 -- ПРИЧИНА КРАСНЫХ КРУГОВ v0.2.0: удалённый поиск был НЕ рекурсивным, а
 -- GetPlayerData лежит НЕ в корне ReplicatedStorage (он под Remotes/Extras —
@@ -2146,9 +2194,11 @@ end
 local function applyEntry(name, record)
     if type(name) ~= "string" or type(record) ~= "table" then return false end
     local role = normalizeRole(record.Role)
-    local killed = record.Killed == true or record.Dead == true
+    -- ВНИМАНИЕ (проверено по живым скриптам): Killed = «УБИЛ ли игрок кого-то»,
+    -- а НЕ «мёртв ли он». Если считать Killed смертью, маньяк исчезает с ESP
+    -- после первого убийства. Мёртвость даёт только поле Dead.
     Roles.Cache[name] = role
-    Roles.Alive[name] = not killed
+    Roles.Alive[name] = record.Dead ~= true
     if localPlayer and name == localPlayer.Name and role ~= "Unknown" then
         -- не даём случайному пушу сбить защёлкнутого маньяка на мирного
         if Roles.LocalRole ~= "Murderer" or role ~= "Innocent" then
@@ -2283,6 +2333,11 @@ end
 function Roles.Listen()
     if pushEvent and not Roles._pushConnected then
         Roles._pushConnected = true
+        -- переподписка на новый инстанс: старый коннект гасим (ремоуты переезжают)
+        if Roles._pushConnection then
+            pcall(function() Roles._pushConnection:Disconnect() end)
+            Roles._pushConnection = nil
+        end
         local connection = pushEvent.OnClientEvent:Connect(function(first, second)
             if type(first) == "table" then
                 applyTable(first)               -- форма 1: вся таблица
@@ -2291,12 +2346,14 @@ function Roles.Listen()
                 if Roles.OnUpdate then pcall(Roles.OnUpdate, Roles.Cache) end
             end
         end)
+        Roles._pushConnection = connection
         connections[#connections + 1] = connection
     end
 end
 
 function Roles.Start()
     if refreshThread then return end
+    Roles._running = true  -- после Shutdown() цикл обязан стартовать заново
     refreshThread = task.spawn(function()
         while Roles._running ~= false do
             pcall(Roles.Refresh)
@@ -2672,7 +2729,7 @@ return World
 
 M["modules/mm2esp.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Role ESP v0.2.0 (added: tracers, alert beep, coin highlights).
+-- Role ESP v0.3.1 (tracers, alert beep, coin highlights).
 --
 -- Purely client-side visuals: Highlight (see-through-walls) + BillboardGui
 -- (name, role label, distance) per player character, colored by role:
@@ -2740,6 +2797,15 @@ local function cleanupDraw(data)
     if data.Beam then pcall(function() data.Beam:Destroy() end) end
     if data.Attach0 then pcall(function() data.Attach0:Destroy() end) end
     if data.Attach1 then pcall(function() data.Attach1:Destroy() end) end
+end
+
+-- Только трейсер (подсветка/билборд остаются) — иначе при выключении трейсеров
+-- ESP на секунду мигает целиком.
+local function cleanupBeam(data)
+    if not data then return end
+    if data.Beam then pcall(function() data.Beam:Destroy() end) data.Beam = nil end
+    if data.Attach0 then pcall(function() data.Attach0:Destroy() end) data.Attach0 = nil end
+    if data.Attach1 then pcall(function() data.Attach1:Destroy() end) data.Attach1 = nil end
 end
 
 local function clearAll()
@@ -2893,8 +2959,7 @@ local function drawPlayer(player, settings)
             end
         end
     elseif data.Beam then
-        cleanupDraw(data)
-        drawData[player] = nil
+        cleanupBeam(data)
     end
 end
 
@@ -3379,7 +3444,7 @@ return Farm
 
 M["modules/combat.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Combat v0.3.0 (FIXED against live scripts: KittyHub/R3TH/MM2 Mods).
+-- Combat v0.3.1 (FIXED against live scripts: KittyHub/R3TH/MM2 Mods).
 --
 -- Причины красных кругов v0.2.0 и как теперь:
 --   * удар ножом: ремоуты Events.KnifeStabbed/HandleTouched НЕ наносят урон в
@@ -3680,9 +3745,16 @@ local function auraLoop()
                 else
                     for _, target in ipairs(targets) do
                         tpStabTarget(knife, target.Root, target.Player.Character)
-                        Combat.KillCount = Combat.KillCount + 1
-                        Combat.LastKillName = target.Player.Name
-                        Combat.Status = "аура: " .. target.Player.Name
+                        -- честный счёт: убийство = цель реально умерла (Health),
+                        -- а не «мы отправили удар»
+                        task.wait(jitter(0.3))
+                        if not aliveTargetRoot(target.Player) then
+                            Combat.KillCount = Combat.KillCount + 1
+                            Combat.LastKillName = target.Player.Name
+                            Combat.Status = "убит: " .. target.Player.Name
+                        else
+                            Combat.Status = "удар: " .. target.Player.Name
+                        end
                         task.wait(jitter(math.max(0.5, settings.AuraDelay or 1.0)))
                     end
                 end
@@ -3716,8 +3788,11 @@ function Combat.KillAll()
                 local freshKnife = fresh and findTool(fresh, "Knife")
                 if freshKnife then
                     tpStabTarget(freshKnife, target.Root, target.Player.Character)
-                    Combat.KillCount = Combat.KillCount + 1
-                    Combat.LastKillName = target.Player.Name
+                    task.wait(jitter(0.3))
+                    if not aliveTargetRoot(target.Player) then
+                        Combat.KillCount = Combat.KillCount + 1
+                        Combat.LastKillName = target.Player.Name
+                    end
                 end
                 task.wait(jitter(0.45))
             end
@@ -3732,8 +3807,11 @@ function Combat.KillAll()
                 local freshGun = localPlayer.Character and localPlayer.Character:FindFirstChild("Gun")
                 if freshGun then
                     fireShot(freshGun, target.Root.Position)
-                    Combat.KillCount = Combat.KillCount + 1
-                    Combat.LastKillName = target.Player.Name
+                    task.wait(jitter(0.35))
+                    if not aliveTargetRoot(target.Player) then
+                        Combat.KillCount = Combat.KillCount + 1
+                        Combat.LastKillName = target.Player.Name
+                    end
                 end
                 task.wait(jitter(0.25))
             end
@@ -4536,7 +4614,7 @@ return Visuals
 
 M["modules/troll.lua"] = [====[
 -- MilfaCheatHUB • Murder Mystery 2
--- Troll pack v0.3.0 (FIXED against live scripts).
+-- Troll pack v0.3.1 (FIXED against live scripts).
 --
 -- Починено/добавлено:
 --   * Эмоции: ремоут это Remotes.PlayEmote (сразу под Remotes, рекурсивный
@@ -4825,6 +4903,11 @@ local function sprayOn(spray, imageId, normalId, size, part, cframe)
     return ok
 end
 
+-- Фейк-нож (метод MM2 Mods «Fake Knife»): ДВА спрея на правую руку —
+--   15093138669 на NormalId.Right и 15096522641 на NormalId.Left (в оригинале
+--   именно так: разные грани, один size 3). Туl переносится в Character
+--   ПРЯМЫМ parent (EquipTool у игрушек может сработать не на всех экзекьюторах)
+--   и возвращается в рюкзак после выстрела ремоутом.
 function Troll.FakeKnife()
     local character, _, root = getCharacterParts()
     if not character or not root then return false, "нет персонажа" end
@@ -4832,16 +4915,30 @@ function Troll.FakeKnife()
     if not hand then return false, "нет руки" end
     local spray = obtainSprayPaint()
     if not spray then return false, "SprayPaint недоступна" end
+    -- прямой перенос в Character (как в оригинале) + фолбэк EquipTool
+    if spray.Parent ~= character then
+        local moved = pcall(function() spray.Parent = character end)
+        if not moved or spray.Parent ~= character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then pcall(function() humanoid:EquipTool(spray) end) end
+        end
+    end
+    if spray.Parent ~= character then return false, "спрей не удалось взять в руку" end
+    local sprayRemote = spray:FindFirstChild("Remote")
     local okCount = 0
-    for _, id in ipairs(KNIFE_SPRAY_IDS) do
-        if sprayOn(spray, id, Enum.NormalId.Right, 3, hand, hand.CFrame * CFrame.new(0, 0, -0.7)) then
+    if sprayRemote and sprayRemote:IsA("RemoteEvent") then
+        local cframe = hand.CFrame * CFrame.new(0, 0, -0.7)
+        if sprayOn(spray, KNIFE_SPRAY_IDS[1], Enum.NormalId.Right, 3, hand, cframe) then
+            okCount = okCount + 1
+        end
+        if sprayOn(spray, KNIFE_SPRAY_IDS[2], Enum.NormalId.Left, 3, hand, cframe) then
             okCount = okCount + 1
         end
     end
     -- вернуть спрей в рюкзак (не мешает играть)
     pcall(function()
         local backpack = localPlayer:FindFirstChildOfClass("Backpack")
-        if spray.Parent == character and backpack then spray.Parent = backpack end
+        if backpack then spray.Parent = backpack end
     end)
     if okCount > 0 then
         return true, "фейк-нож на руке (видно всем)"
@@ -4938,47 +5035,53 @@ end
 function Troll.SetFakeGlitch(value)
     Troll.FakeGlitch = value and true or false
     ConfigRef.Settings.FakeGlitch = Troll.FakeGlitch
-    if value then
-        glitchThread = task.spawn(function()
-            while Troll.FakeGlitch do
-                local character, humanoid, root = getCharacterParts()
-                if humanoid and root and humanoid.Health > 0 then
-                    local roll = math.random()
-                    if roll < 0.55 then
-                        -- микроТП вбок (реплицируется — все видят дёрганья)
-                        local offset = Vector3.new(
-                            (math.random() - 0.5) * 4.4,
-                            math.random() < 0.25 and 1.6 or 0,
-                            (math.random() - 0.5) * 4.4)
-                        root.CFrame = root.CFrame + offset
-                    elseif roll < 0.75 then
-                        -- спин
-                        root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(90, 270)), 0)
-                    elseif roll < 0.9 then
-                        -- дёрганье анимаций: стоп/старт всех треков
-                        pcall(function()
-                            local animator = humanoid:FindFirstChildOfClass("Animator")
-                            if animator then
-                                for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                                    track:Stop(0)
-                                    task.wait(0.05)
-                                    track:Play(0.1)
-                                end
-                            end
-                        end)
-                    else
-                        -- фриз в воздухе
-                        root.Anchored = true
-                        task.wait(0.12 + math.random() * 0.2)
-                        if root.Parent then root.Anchored = false end
-                    end
-                end
-                task.wait(0.1 + math.random() * 0.2)
-            end
+    if not value then
+        -- страховка: если выключили во время «фриза в воздухе», снимаем анкор,
+        -- иначе персонаж навсегда зависает в воздухе
+        pcall(function()
+            local _, _, root = getCharacterParts()
+            if root then root.Anchored = false end
         end)
-        return true, "фейк-глитч ВКЛ (все видят дёрганья)"
+        return true, "фейк-глитч ВЫКЛ"
     end
-    return true, "фейк-глитч ВЫКЛ"
+    glitchThread = task.spawn(function()
+        while Troll.FakeGlitch do
+            local character, humanoid, root = getCharacterParts()
+            if humanoid and root and humanoid.Health > 0 then
+                local roll = math.random()
+                if roll < 0.55 then
+                    -- микроТП вбок (реплицируется — все видят дёрганья)
+                    local offset = Vector3.new(
+                        (math.random() - 0.5) * 4.4,
+                        math.random() < 0.25 and 1.6 or 0,
+                        (math.random() - 0.5) * 4.4)
+                    root.CFrame = root.CFrame + offset
+                elseif roll < 0.75 then
+                    -- спин
+                    root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(math.random(90, 270)), 0)
+                elseif roll < 0.9 then
+                    -- дёрганье анимаций: стоп/старт всех треков
+                    pcall(function()
+                        local animator = humanoid:FindFirstChildOfClass("Animator")
+                        if animator then
+                            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                track:Stop(0)
+                                task.wait(0.05)
+                                track:Play(0.1)
+                            end
+                        end
+                    end)
+                else
+                    -- фриз в воздухе
+                    root.Anchored = true
+                    task.wait(0.12 + math.random() * 0.2)
+                    if root.Parent then root.Anchored = false end
+                end
+            end
+            task.wait(0.1 + math.random() * 0.2)
+        end
+    end)
+    return true, "фейк-глитч ВКЛ (все видят дёрганья)"
 end
 
 ---------------------------------------------------------------------

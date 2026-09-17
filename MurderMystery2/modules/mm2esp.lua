@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Role ESP v0.2.0 (added: tracers, alert beep, coin highlights).
+-- Role ESP v0.3.1 (tracers, alert beep, coin highlights).
 --
 -- Purely client-side visuals: Highlight (see-through-walls) + BillboardGui
 -- (name, role label, distance) per player character, colored by role:
@@ -67,6 +67,15 @@ local function cleanupDraw(data)
     if data.Beam then pcall(function() data.Beam:Destroy() end) end
     if data.Attach0 then pcall(function() data.Attach0:Destroy() end) end
     if data.Attach1 then pcall(function() data.Attach1:Destroy() end) end
+end
+
+-- Только трейсер (подсветка/билборд остаются) — иначе при выключении трейсеров
+-- ESP на секунду мигает целиком.
+local function cleanupBeam(data)
+    if not data then return end
+    if data.Beam then pcall(function() data.Beam:Destroy() end) data.Beam = nil end
+    if data.Attach0 then pcall(function() data.Attach0:Destroy() end) data.Attach0 = nil end
+    if data.Attach1 then pcall(function() data.Attach1:Destroy() end) data.Attach1 = nil end
 end
 
 local function clearAll()
@@ -220,8 +229,7 @@ local function drawPlayer(player, settings)
             end
         end
     elseif data.Beam then
-        cleanupDraw(data)
-        drawData[player] = nil
+        cleanupBeam(data)
     end
 end
 

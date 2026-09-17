@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Combat v0.3.0 (FIXED against live scripts: KittyHub/R3TH/MM2 Mods).
+-- Combat v0.3.1 (FIXED against live scripts: KittyHub/R3TH/MM2 Mods).
 --
 -- Причины красных кругов v0.2.0 и как теперь:
 --   * удар ножом: ремоуты Events.KnifeStabbed/HandleTouched НЕ наносят урон в
@@ -300,9 +300,16 @@ local function auraLoop()
                 else
                     for _, target in ipairs(targets) do
                         tpStabTarget(knife, target.Root, target.Player.Character)
-                        Combat.KillCount = Combat.KillCount + 1
-                        Combat.LastKillName = target.Player.Name
-                        Combat.Status = "аура: " .. target.Player.Name
+                        -- честный счёт: убийство = цель реально умерла (Health),
+                        -- а не «мы отправили удар»
+                        task.wait(jitter(0.3))
+                        if not aliveTargetRoot(target.Player) then
+                            Combat.KillCount = Combat.KillCount + 1
+                            Combat.LastKillName = target.Player.Name
+                            Combat.Status = "убит: " .. target.Player.Name
+                        else
+                            Combat.Status = "удар: " .. target.Player.Name
+                        end
                         task.wait(jitter(math.max(0.5, settings.AuraDelay or 1.0)))
                     end
                 end
@@ -336,8 +343,11 @@ function Combat.KillAll()
                 local freshKnife = fresh and findTool(fresh, "Knife")
                 if freshKnife then
                     tpStabTarget(freshKnife, target.Root, target.Player.Character)
-                    Combat.KillCount = Combat.KillCount + 1
-                    Combat.LastKillName = target.Player.Name
+                    task.wait(jitter(0.3))
+                    if not aliveTargetRoot(target.Player) then
+                        Combat.KillCount = Combat.KillCount + 1
+                        Combat.LastKillName = target.Player.Name
+                    end
                 end
                 task.wait(jitter(0.45))
             end
@@ -352,8 +362,11 @@ function Combat.KillAll()
                 local freshGun = localPlayer.Character and localPlayer.Character:FindFirstChild("Gun")
                 if freshGun then
                     fireShot(freshGun, target.Root.Position)
-                    Combat.KillCount = Combat.KillCount + 1
-                    Combat.LastKillName = target.Player.Name
+                    task.wait(jitter(0.35))
+                    if not aliveTargetRoot(target.Player) then
+                        Combat.KillCount = Combat.KillCount + 1
+                        Combat.LastKillName = target.Player.Name
+                    end
                 end
                 task.wait(jitter(0.25))
             end

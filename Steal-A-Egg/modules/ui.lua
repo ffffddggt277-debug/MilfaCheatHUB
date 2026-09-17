@@ -95,7 +95,6 @@ local function loadIconAsync(url, callback)
 
     IconLoading = true
     task.spawn(function()
-        local asset
         if writefile and getcustomasset then
             local requestFn = request or http_request or (syn and syn.request)
             if requestFn then
@@ -104,18 +103,46 @@ local function loadIconAsync(url, callback)
                 pcall(function()
                     if makefolder and not (isfolder and isfolder(folder)) then makefolder(folder) end
                 end)
-                if not (isfile and isfile(path)) then
-                    local ok, response = pcall(requestFn, {Url = url, Method = "GET"})
-                    local body = ok and response and (response.Body or response.body)
-                    if body then pcall(writefile, path, body) end
+
+                -- Резервный CDN: raw иногда режется провайдером (мобильные сети).
+                local mirror = string.gsub(url,
+                    "^https://raw%.githubusercontent%.com/([^/]+)/([^/]+)/",
+                    "https://cdn.jsdelivr.net/gh/%1/%2@")
+
+                -- PNG-сигнатура: защита от записи HTML-ошибки/JSON в кэш
+                -- (после этого getcustomasset умирает до ручной чистки файла).
+                local function looksPng(body)
+                    return type(body) == "string" and #body > 8 and body:sub(1, 4) == "\137PNG"
                 end
+
+                local function fetch()
+                    for _, candidate in ipairs({ url, mirror }) do
+                        local ok, response = pcall(requestFn, { Url = candidate, Method = "GET" })
+                        local code = ok and response and
+                            (response.StatusCode or response.statusCode or response.code or response.status)
+                        local body = ok and response and (response.Body or response.body)
+                        if body and looksPng(body) and (code == nil or tonumber(code) == 200) then
+                            return body
+                        end
+                    end
+                    return nil
+                end
+
+                -- Кэш с прошлого запуска может быть мусором: если движок его не
+                -- принял — один раз перекачиваем и пробуем снова.
                 local ok, result = pcall(getcustomasset, path)
-                if ok then asset = result end
+                if not (ok and result) then
+                    local body = fetch()
+                    if body then
+                        pcall(writefile, path, body)
+                        ok, result = pcall(getcustomasset, path)
+                    end
+                end
+                if ok and result then IconAsset = result end
             end
         end
-        IconAsset = asset
         IconLoading = false
-        if asset then callback(asset) end
+        if IconAsset then callback(IconAsset) end
     end)
 end
 

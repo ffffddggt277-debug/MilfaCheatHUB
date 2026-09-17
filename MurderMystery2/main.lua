@@ -12,7 +12,7 @@
 
 local EXPECTED_PLACE_ID = 142823291
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/"
-local VERSION = "0.3.0"
+local VERSION = "0.3.1"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 

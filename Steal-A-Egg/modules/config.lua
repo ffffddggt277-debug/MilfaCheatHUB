@@ -17,7 +17,7 @@
 return {
     Name = "MilfaCheatHUB",
     Game = "Steal An Egg",
-    Version = "0.6.2",
+    Version = "0.6.3",
     PlaceId = 107778070777162,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/",
@@ -148,7 +148,7 @@ return {
         HeadlessLoad = false,      -- false = GUI появляется сразу (надёжно на телефоне);
                                    -- true = тихая загрузка, вызов: 3 пальца / RightControl / чат
         DebugLogs = false,         -- печать в консоль (ПОМНИ: LogService читается античитом!)
-        LoadIcon = false,          -- тянуть иконку (writefile/getcustomasset оставляют следы)
+        LoadIcon = true,           -- иконка репо в логотипах (1 HttpGet, кэш на диске)
         GuiMount = "Hidden",       -- Hidden = gethui/CoreGui (невидимы игровым сканерам) | PlayerGui | Auto
         ChatCommand = "/e mh",     -- команда чата для вызова GUI в headless-режиме
         BacAutoBypass = false,     -- НЕ включать агрессивный обход BAC при загрузке
