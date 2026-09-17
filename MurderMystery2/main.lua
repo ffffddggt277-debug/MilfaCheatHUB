@@ -12,7 +12,7 @@
 
 local EXPECTED_PLACE_ID = 142823291
 local BASE_URL = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/"
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 
@@ -76,6 +76,7 @@ local state = {
 
 local Config, Stealth, AntiCheat, UI, Features
 local RolesM, NetworkM, WorldM, ESPM, FarmM, CombatM, MovementM, VisualsM
+local TrollM, BetaM
 
 local DEBUG = false
 local function log(...)
@@ -102,6 +103,7 @@ local function cleanup()
     if state.App then pcall(function() state.App:Destroy() end) end
     if state.Loader then pcall(function() state.Loader:Destroy() end) end
     disconnectAll()
+    if TrollM then pcall(function() TrollM.Shutdown() end) end
     if Stealth then pcall(function() Stealth.Shutdown() end) end
 
     state.Features = nil
@@ -214,6 +216,10 @@ local function buildWorld()
     visuals.Configure(Config)
     state.Visuals = visuals
 
+    loadingStep(0.92, "Настраиваем троллинг и бету...")
+    TrollM.Configure(Config, Stealth)
+    BetaM.Configure(Config, RolesM, WorldM)
+
     state.WorldBuilt = true
     return true
 end
@@ -235,7 +241,7 @@ local function summonGui()
 
         loadingStep(0.93, "Подключаем функции...")
         state.Features = Features.new(Config, state.App, RolesM, state.Network, state.World,
-            state.ESP, state.Farm, state.Combat, state.Movement, state.Visuals, alive, Stealth)
+            state.ESP, state.Farm, state.Combat, state.Movement, state.Visuals, alive, Stealth, TrollM, BetaM)
         state.Features:Build()
         state.Features:Start()
 
@@ -299,6 +305,8 @@ local success, failure = xpcall(function()
     CombatM = loadModule("modules/combat.lua")
     MovementM = loadModule("modules/movement.lua")
     VisualsM = loadModule("modules/visuals.lua")
+    TrollM = loadModule("modules/troll.lua")
+    BetaM = loadModule("modules/beta.lua")
     UI = loadModule("modules/ui.lua")
     Features = loadModule("modules/features.lua")
 
@@ -318,7 +326,7 @@ local success, failure = xpcall(function()
 
         loadingStep(0.93, "Подключаем функции...")
         state.Features = Features.new(Config, state.App, RolesM, state.Network, state.World,
-            state.ESP, state.Farm, state.Combat, state.Movement, state.Visuals, alive, Stealth)
+            state.ESP, state.Farm, state.Combat, state.Movement, state.Visuals, alive, Stealth, TrollM, BetaM)
         state.Features:Build()
         state.Features:Start()
 

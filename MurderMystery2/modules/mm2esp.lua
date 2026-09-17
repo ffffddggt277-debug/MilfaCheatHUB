@@ -1,15 +1,17 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Role ESP v0.1.0.
+-- Role ESP v0.2.0 (added: tracers, alert beep, coin highlights).
 --
 -- Purely client-side visuals: Highlight (see-through-walls) + BillboardGui
 -- (name, role label, distance) per player character, colored by role:
 -- murderer red, sheriff blue, hero amber, innocent green.
--- GunDrop gets its own highlight + billboard.
+-- Optional Beam-tracers from the local character to every drawn target.
+-- GunDrop gets its own highlight + billboard; coins optionally highlighted.
 -- All instances live directly on characters (no container scan risk);
 -- names are random per refresh cycle (stealth doctrine).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
 local ESP = {}
 
@@ -24,13 +26,27 @@ local StealthRef = nil
 
 local running = false
 local loopThread = nil
-local drawData = {}       -- [player] = {Highlight, Billboard, TextLabel, Dot}
+local drawData = {}       -- [player] = {Highlight, Billboard, TextLabel, Beam, Attach0, Attach1}
 local gunDropDraw = nil
 local gunDropSeen = false
 local lastAlertAt = 0
+local coinDraws = {}      -- [coinPart] = Highlight
+local beepSound = nil
 
 local function note(...)
     if ESP.Debug then print("[mh esp]", ...) end
+end
+
+local function beep()
+    pcall(function()
+        if not beepSound then
+            beepSound = Instance.new("Sound")
+            beepSound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+            beepSound.Volume = 0.6
+            beepSound.Parent = SoundService
+        end
+        beepSound:Play()
+    end)
 end
 
 local function cleanupDraw(data)
@@ -39,6 +55,9 @@ local function cleanupDraw(data)
     -- leaking the other instance — check each explicitly.
     if data.Highlight then pcall(function() data.Highlight:Destroy() end) end
     if data.Billboard then pcall(function() data.Billboard:Destroy() end) end
+    if data.Beam then pcall(function() data.Beam:Destroy() end) end
+    if data.Attach0 then pcall(function() data.Attach0:Destroy() end) end
+    if data.Attach1 then pcall(function() data.Attach1:Destroy() end) end
 end
 
 local function clearAll()
@@ -157,7 +176,43 @@ local function drawPlayer(player, settings)
         if now - lastAlertAt > 6 then
             lastAlertAt = now
             if ESP.OnAlert then pcall(ESP.OnAlert, "МАНЬЯК рядом: " .. player.Name .. " (" .. string.format("%.0f", dist) .. "м)") end
+            if settings.AlertBeep then beep() end
         end
+    end
+
+    -- Beam-трейсеры к целям (клиентский визуал).
+    if settings.Tracers then
+        local myRoot = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if myRoot and rootPart then
+            if not data.Beam or not data.Beam.Parent then
+                local ok = pcall(function()
+                    local attach0 = Instance.new("Attachment")
+                    attach0.Parent = myRoot
+                    local attach1 = Instance.new("Attachment")
+                    attach1.Parent = rootPart
+                    local beam = Instance.new("Beam")
+                    beam.Name = StealthRef and StealthRef.RandomName(10) or "rbxTrace"
+                    beam.Attachment0 = attach0
+                    beam.Attachment1 = attach1
+                    beam.FaceCamera = true
+                    beam.Width0 = 0.12
+                    beam.Width1 = 0.12
+                    beam.Transparency = NumberSequence.new(0.25)
+                    beam.Color = ColorSequence.new(color)
+                    beam.LightEmission = 0.8
+                    beam.Parent = myRoot
+                    data.Attach0 = attach0
+                    data.Attach1 = attach1
+                    data.Beam = beam
+                end)
+                if not ok then return end
+            elseif data.Beam then
+                data.Beam.Color = ColorSequence.new(color)
+            end
+        end
+    elseif data.Beam then
+        cleanupDraw(data)
+        drawData[player] = nil
     end
 end
 
@@ -214,6 +269,45 @@ local function drawGunDrop(settings)
     end
 end
 
+local function clearCoins()
+    for coin, highlight in pairs(coinDraws) do
+        pcall(function() highlight:Destroy() end)
+        coinDraws[coin] = nil
+    end
+end
+
+local function drawCoins(settings)
+    if not settings.CoinESP then
+        if next(coinDraws) then clearCoins() end
+        return
+    end
+    local coins = WorldRef.FindCoins(false)
+    local alive = {}
+    local limit = 60
+    for index, coin in ipairs(coins) do
+        if index > limit then break end
+        alive[coin] = true
+        if not coinDraws[coin] or not coinDraws[coin].Parent then
+            pcall(function()
+                local highlight = Instance.new("Highlight")
+                highlight.Name = StealthRef and StealthRef.RandomName(9) or "rbxCoin"
+                highlight.FillColor = Color3.fromRGB(255, 228, 92)
+                highlight.OutlineColor = Color3.fromRGB(255, 228, 92)
+                highlight.FillTransparency = 0.6
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.Parent = coin
+                coinDraws[coin] = highlight
+            end)
+        end
+    end
+    for coin in pairs(coinDraws) do
+        if not alive[coin] then
+            pcall(function() coinDraws[coin]:Destroy() end)
+            coinDraws[coin] = nil
+        end
+    end
+end
+
 local function loop()
     while running do
         local ok, err = pcall(function()
@@ -236,6 +330,7 @@ local function loop()
                 clearAll()
             end
             drawGunDrop(settings)
+            drawCoins(settings)
         end)
         if not ok then note("loop: " .. tostring(err)) end
         local delay = math.max(0.4, ConfigRef.Settings.RefreshSeconds or 1)
@@ -244,8 +339,18 @@ local function loop()
     end
 end
 
+function ESP.SetCoins(value)
+    ConfigRef.Settings.CoinESP = value and true or false
+    if value and not running then
+        running = true
+        loopThread = task.spawn(loop)
+    end
+    if not value then clearCoins() end
+end
+
 function ESP.SetEnabled(value)
     ConfigRef.Settings.PlayerESP = value and true or false
+    ESP.Enabled = value and true or false
     if value and not running then
         running = true
         loopThread = task.spawn(loop)
@@ -266,6 +371,7 @@ end
 function ESP.Destroy()
     running = false
     clearAll()
+    clearCoins()
 end
 
 return ESP

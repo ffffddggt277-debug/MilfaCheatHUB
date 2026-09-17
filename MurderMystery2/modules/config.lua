@@ -1,5 +1,5 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Shared branding, palette, paths and defaults. v0.1.0
+-- Shared branding, palette, paths and defaults. v0.2.0
 --
 -- CALM-доктрина наследуется из Steal-A-Egg v0.6.2:
 --   * при загрузке печатается ТОЛЬКО голый номер версии (LogService читается
@@ -15,7 +15,7 @@
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.1.0",
+    Version = "0.2.0",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
@@ -94,7 +94,7 @@ return {
         FarmLobbyCoins = false,   -- собирать монеты и в лобби
 
         -- Автоматика
-        GunGrabber = false,       -- автоподбор выпавшего пистолета (не как маньяк)
+        GunGrabber = false,       -- ЛЕГАСИ: автоподбор глайдом (см. AutoPistolMode)
         AntiAFK = false,
 
         -- Бой (только у своей роли; повышенный риск репортов)
@@ -103,6 +103,38 @@ return {
         AuraDelay = 1.0,
         SheriffAuto = false,      -- авто-выстрел в видимого маньяка (шериф/хиро)
         SheriffRange = 300,
+
+        -- Тихий аим (одиночное действие по кнопке/клавише, без циклов)
+        SheriffAimButton = true,  -- плавающая кнопка «ВЫСТРЕЛ» (шериф/герой)
+        MurderAimButton = true,   -- плавающая кнопка «НОЖ» (маньяк)
+        AimMaxDistance = 260,     -- макс. дистанция тихих прицелов
+        ShowFloatingButtons = true,
+        KeySheriffAim = "G",      -- клавиша выстрела (ПК)
+        KeyMurderAim = "H",       -- клавиша броска ножа (ПК)
+        KeyGrabGun = "J",         -- клавиша ТП к пистолету (ПК)
+        KeyFakeDeath = "K",       -- клавиша фейк-смерти по кругу (ПК)
+
+        -- AutoDodge (резкий стрейф от ножей и стрелков)
+        AutoDodge = false,
+        DodgeRadius = 45,         -- радиус обнаружения снарядов
+        DodgePower = 12,          -- сила рывка в сторону (стадов)
+        DodgeCooldown = 1.2,      -- пауза между уклонениями
+
+        -- AutoPistol: ТП к выпавшему пистолету и обратно
+        AutoPistolMode = "Кнопка", -- Выключено | Кнопка | Авто
+        PistolSpeed = 110,         -- скорость глайда к пистолету
+        PistolReturnDelay = 0.8,   -- пауза перед возвратом
+
+        -- Бета
+        PredictionRefresh = 4,     -- период пересчёта прогноза (сек)
+
+        -- HUD и мелочи
+        ShowTimerHud = true,       -- плавающий таймер раунда
+        Tracers = false,           -- лучи к игрокам (роли)
+        AlertBeep = false,         -- звук при «маньяк рядом»
+        CoinESP = false,           -- подсветка монет на карте
+        FOV = 70,                  -- поле зрения камеры
+        WideZoom = false,          -- отдалить макс. зум (обзор карты)
 
         -- Персонаж
         WalkSpeed = 16,

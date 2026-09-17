@@ -315,7 +315,7 @@ function UI.new(config, stealth)
     subtitle.Size = UDim2.new(1, -60, 0, 15)
     subtitle.Position = UDim2.fromOffset(58, 33)
     subtitle.BackgroundTransparency = 1
-    subtitle.Text = "STEAL AN EGG"
+    subtitle.Text = "MURDER MYSTERY 2"
     subtitle.TextColor3 = colors.Muted
     subtitle.TextXAlignment = Enum.TextXAlignment.Left
     subtitle.Font = Enum.Font.Code
@@ -340,7 +340,7 @@ function UI.new(config, stealth)
     local pageTitle = Instance.new("TextLabel")
     pageTitle.Size = UDim2.new(1, -78, 1, 0)
     pageTitle.BackgroundTransparency = 1
-    pageTitle.Text = "ЯЙЦА"
+    pageTitle.Text = "MM2"
     pageTitle.TextColor3 = colors.Text
     pageTitle.TextXAlignment = Enum.TextXAlignment.Left
     pageTitle.Font = Enum.Font.Code
@@ -1024,6 +1024,109 @@ function UI.new(config, stealth)
         end
 
         return controller
+    end
+
+    -----------------------------------------------------------------
+    -- Floating action buttons (телефон: кнопки под палец; ПК: клавиши).
+    -- Живут на самом ScreenGui — видны и при скрытом окне.
+    -----------------------------------------------------------------
+    local fabHost = Instance.new("Frame")
+    fabHost.Name = randomGuiName()
+    fabHost.Size = UDim2.new(0, 64, 0, 320)
+    fabHost.Position = UDim2.new(1, -62, 0.5, -140)
+    fabHost.BackgroundTransparency = 1
+    fabHost.Parent = gui
+    local fabList = Instance.new("UIListLayout")
+    fabList.Padding = UDim.new(0, 8)
+    fabList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    fabList.VerticalAlignment = Enum.VerticalAlignment.Center
+    fabList.SortOrder = Enum.SortOrder.LayoutOrder
+    fabList.Parent = fabHost
+
+    local fabCount = 0
+    function self:AddFloatingButton(text, color, callback)
+        fabCount = fabCount + 1
+        local button = Instance.new("TextButton")
+        button.Name = randomGuiName()
+        button.LayoutOrder = fabCount
+        button.Size = UDim2.fromOffset(56, 40)
+        button.BackgroundColor3 = colors.Background
+        button.BackgroundTransparency = 0.12
+        button.BorderSizePixel = 0
+        button.Text = text
+        button.TextColor3 = color
+        button.Font = Enum.Font.Code
+        button.TextSize = 10
+        button.Active = true
+        button.Visible = false
+        button.Parent = fabHost
+        corner(button, 10)
+        stroke(button, color, 1.4, 0.15)
+        gradient(button, colors.Panel2, colors.Background, 90)
+        button.MouseButton1Click:Connect(function()
+            TweenService:Create(button, TweenInfo.new(0.08), { BackgroundTransparency = 0.55 }):Play()
+            task.delay(0.16, function()
+                if button.Parent then
+                    TweenService:Create(button, TweenInfo.new(0.15), { BackgroundTransparency = 0.12 }):Play()
+                end
+            end)
+            task.spawn(callback)
+        end)
+        return {
+            Frame = button,
+            SetVisible = function(_, value) button.Visible = value == true end,
+            SetText = function(_, value) button.Text = tostring(value) end,
+            Destroy = function() pcall(function() button:Destroy() end) end,
+        }
+    end
+
+    function self:SetFloatingHostVisible(value)
+        fabHost.Visible = value ~= false
+    end
+
+    -----------------------------------------------------------------
+    -- Плавающий HUD: таймер раунда + строка ролей (перетаскивается).
+    -----------------------------------------------------------------
+    function self:AddFloatingHud()
+        local hud = Instance.new("Frame")
+        hud.Name = randomGuiName()
+        hud.Size = UDim2.fromOffset(158, 54)
+        hud.Position = UDim2.new(0.5, -79, 0, 10)
+        hud.BackgroundColor3 = colors.Background
+        hud.BackgroundTransparency = 0.25
+        hud.BorderSizePixel = 0
+        hud.Active = true
+        hud.Draggable = true
+        hud.Parent = gui
+        corner(hud, 10)
+        stroke(hud, colors.Border, 1, 0.3)
+
+        local line1 = Instance.new("TextLabel")
+        line1.Size = UDim2.new(1, -10, 0, 26)
+        line1.Position = UDim2.fromOffset(5, 2)
+        line1.BackgroundTransparency = 1
+        line1.Text = "—:—"
+        line1.TextColor3 = colors.Movement
+        line1.Font = Enum.Font.Code
+        line1.TextSize = 17
+        line1.Parent = hud
+
+        local line2 = Instance.new("TextLabel")
+        line2.Size = UDim2.new(1, -10, 0, 18)
+        line2.Position = UDim2.fromOffset(5, 30)
+        line2.BackgroundTransparency = 1
+        line2.Text = "роль: ?"
+        line2.TextColor3 = colors.Muted
+        line2.Font = Enum.Font.Code
+        line2.TextSize = 9
+        line2.Parent = hud
+
+        return {
+            Frame = hud,
+            SetTime = function(_, value) line1.Text = tostring(value) end,
+            SetInfo = function(_, value) line2.Text = tostring(value) end,
+            SetVisible = function(_, value) hud.Visible = value == true end,
+        }
     end
 
     return self
