@@ -1,21 +1,23 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Shared branding, palette, paths and defaults. v0.3.1
+-- Shared branding, palette, paths and defaults. v0.5.0
 --
 -- CALM-доктрина наследуется из Steal-A-Egg v0.6.2:
 --   * при загрузке печатается ТОЛЬКО голый номер версии (LogService читается
 --     игровыми скриптами — слов в логе быть не должно)
 --   * GUI появляется сразу и маунтится скрыто (gethui/CoreGui)
 --   * ноль хуков при загрузке; всё агрессивное — только opt-in
--- Данные ресёрча v0.3.0 (рабочие скрипты KittyHub/W-Azeox/R3TH/MM2 Mods):
---   роли = Remotes.Extras.GetPlayerData (рекурсивный поиск!) + пуш
---          PlayerDataChanged (2 формы); убийство = Knife.Stab("Down"/"Up")
---          + ТП-стаб; выстрел = Gun.KnifeLocal.CreateBeam(1,pos,"AH2");
---          фейк нож = спрей SprayPaint на руку; эмоции = Remotes.PlayEmote.
+-- Данные ресёрча v0.5.0 (живые хабы CGS_Movil/fogyhub/KittyHub/StyearX):
+--   бой = tool:Activate() ПЕРВЫМ делом (играет родные анимации и шлёт свои
+--   ремоуты), потом сырые каналы: Knife.Stab("Down"/"Up") +
+--   KnifeStabbed/HandleTouched + firetouch; Gun.Shoot(fromCF,toCF) ->
+--   CreateBeam(1,pos,"AH2") -> ShootGun(1,pos,"AH"); бросок =
+--   KnifeThrown(from ориентированный, to) + анимация с тула; роли =
+--   Remotes.Extras.GetPlayerData + пуш PlayerDataChanged (2 формы).
 
 return {
     Name = "MilfaCheatHUB",
     Game = "Murder Mystery 2",
-    Version = "0.4.1",
+    Version = "0.5.0",
     PlaceId = 142823291,
 
     RawBase = "https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/",
@@ -69,8 +71,10 @@ return {
         "RF/Remotes.Extras.ReplicateToy (SprayPaint)",
         "RE/Character.Knife.Stab (Down/Up)",
         "RE/Character.Knife.Events.KnifeThrown",
+        "RE/Character.Gun.Shoot (fromCF, toCF — StyearX)",
         "RF/Character.Gun.KnifeLocal.CreateBeam.RemoteFunction (AH2/AH)",
         "RF/Character.Gun.KnifeServer.ShootGun (фолбэк)",
+        "tool:Activate() — родной LocalScript тула (CGS/fogyhub)",
     },
 
     Settings = {
@@ -110,6 +114,7 @@ return {
         KillAllRadius = 60,       -- радиус KILL ALL
         SheriffAuto = false,      -- авто-выстрел в видимого маньяка (шериф/хиро)
         SheriffRange = 300,
+        CombatAnimations = true,  -- играть анимации замаха/выстрела/броска с тулов
 
         -- Тихий аим (одиночное действие по кнопке/клавише, без циклов)
         SheriffAimButton = true,  -- плавающая кнопка «ВЫСТРЕЛ» (шериф/герой)
@@ -142,6 +147,8 @@ return {
         LoadIcon = true,           -- тянуть иконку репо (1 HttpGet + getcustomasset, кэш на диске)
         ShowTimerHud = true,       -- плавающий таймер раунда
         ShowQuickMenu = true,      -- квадратная быстрая кнопка на экране
+        QuickButtons = {},         -- кнопки быстрого меню: ПУСТО, юзер выбирает сам
+                                   -- (СИСТЕМА -> «Кнопки быстрого меню»)
         Tracers = false,           -- лучи к игрокам (роли)
         AlertBeep = false,         -- звук при «маньяк рядом»
         CoinESP = false,           -- подсветка монет на карте

@@ -267,10 +267,10 @@ X-ориентиры: Forest `602`, Lake `746`, Desert `785`, Jungle `936`, Snow
 loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/Steal-A-Egg/main.lua?v=0.6.3"))()
 ```
 
-### Murder Mystery 2 (v0.4.0)
+### Murder Mystery 2 (v0.5.0)
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.4.1"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/MilfaCheatHUB/main/MurderMystery2/main.lua?v=0.5.0"))()
 ```
 
 ## Murder Mystery 2
@@ -278,7 +278,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/ffffddggt277-debug/Mi
 - PlaceId: `142823291`;
 - папка: `/MurderMystery2/`;
 - точка входа: `/MurderMystery2/main.lua`;
-- текущая версия: `0.4.0`;
+- текущая версия: `0.5.0` (бой переписан на Activate-first, быстрое меню = выбор кнопок, ремонт анимаций);
 - стиль GUI и CALM-доктрина — как в Steal-A-Egg v0.6.2 (тот же ui.lua/stealth.lua/anticheat.lua);
 - ресёрч: 9 открытых хабов разобраны (KittyHub, StyearX, xsync69, fogyhub, CGS Mobile,
   zzerexx Utilities, v1ain, TrixAde, IqokczHub); v0.3.0 — сверка с живыми исходниками
@@ -393,6 +393,21 @@ SafeTeleport/glide + скорость, человеческие задержки
   риски: клиентский Roblox-античит (зависит от экзекьютора) и репорты игроков.
 
 ## Журнал
+
+### 2026-09-17 — MM2 0.5.0 (БОЛЬШОЙ РЕРАЙТ БОЯ: Activate-first + быстрое меню с выбором кнопок)
+
+Жалобы пользователя: «выстрел не работает, нож тоже, пистолет тоже, пропали анимации, убери из быстрого меню все кнопки — надо выбрать какие нужны». Разбор по ЖИВЫМ исходникам (CGS_Movil — мобильный, fogyhub, KittyHub, StyearX):
+
+- КОРЕНЬ НЕРАБОТАЮЩЕГО БОЯ №1: мы шлём только сырые ремоуты, а рабочие хабы сначала дергают `tool:Activate()` — запускается СОБСТВЕННЫЙ LocalScript тула: он сам играет замах/выстрел (анимации!), шлёт правильные ремоуты и звук. CGS: knife:Activate() в ауре, gun:Activate() в TriggerBot/AutoShoot; fogyhub: якорь HRP + TP + knife:Activate() + firetouchinterest.
+- КОРЕНЬ №2: findTool мог вернуть тул ИЗ РЮКЗАКА (сервер отклоняет удары не из руки) → новый `ensureEquipped` с ожиданием до 1с, честный nil.
+- КОРЕНЬ №3: у актуального MM2 есть ремоут `Gun.Shoot:FireServer(fromCF, toCF)` (StyearX) — добавлен ПЕРВЫМ каналом выстрела; CreateBeam(1,pos,"AH2"/"AH") — второй; ShootGun(1,pos,"AH") — третий; последний фолбэк — camera+Activate.
+- КОРЕНЬ №4: ТП-стаб без якоря флингует тело (fogyhub якорит) → якорим HRP на время мига, снимаем после.
+- КОРЕНЬ №5: кнопки умирали на «роли не определены» → при неизвестных ролях ВЫСТРЕЛ/БРОСОК летят в ТОЧКУ ПРИЦЕЛА; фолбэк роли по ножу/пистолету В РЮКЗАКЕ (шериф спавнится с пистолетом в рюкзаке).
+- АНИМАЦИИ: с каждого тула читаем Animation (swing/stab/throw/fire/recoil; одна на тул = она), грузим в Animator, играем ДО ремоута (KittyHub-подход) + реплицируется всем; CombatAnimations-тогл.
+- БЫСТРОЕ МЕНЮ: ПУСТО по умолчанию; реестр 15 кнопок (ВЫСТРЕЛ/УДАР/БРОСОК/В ПРИЦЕЛ/KILL ALL/АУРА/ПИСТОЛЕТ/ФЕЙК-СМЕРТЬ/ФЕЙК НОЖ/ФЕЙК ПИСТ/ГЛИТЧ/ЭМОЦИЯ/К МАНЬЯКУ/К ШЕРИФУ/РЕМОНТ); тоглы в СИСТЕМЕ пишут settings.QuickButtons, панель ребилдится на лету (ui.lua AddQuickMenu:Rebuild), пустой список = подсказка.
+- РЕМОНТ АНИМАЦИЙ (Troll.RepairAnimations): снимает залипший рагдолл/PlatformStand, GettingUp, включает выключенный Animate-скрипт, сбивает эмот-треки, снимает якорь; + кнопка в СИСТЕМЕ + авто-гвардия на респавне.
+- ПИСТОЛЕТ: после подбора сразу экипируется (ВЫСТРЕЛ готов без лишнего тапа).
+- Сборка: lua_check 30/30 PASS; bundle 264.1 KB (15 модулей); cache-buster ?v=0.5.0.
 
 ### 2026-09-17 — MM2 0.4.0 (через со-разработку с NEX (OpenRouter nex-n2.5-pro) + верификация сигнатур по свежим хабам)
 

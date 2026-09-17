@@ -1,15 +1,13 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Feature wiring v0.4.1. GUI почищен (аудит NEX + разметка юзера):
+-- Feature wiring v0.5.0. GUI почищен (аудит NEX + разметка юзера):
 -- 7 вкладок: ГЛАВНАЯ / ИГРОКИ / БОЙ / АВТО / ПЕРСОНАЖ / ТРОЛЛИНГ / СИСТЕМА.
--- ГЛАВНАЯ — статус раунда/ролей/соединения + быстрые действия (новичок сразу видит главное).
--- Убрано: дубль-тоглы SheriffAim/MurderAim (кнопки делают то же),
--- слайдеры AimMaxDistance/AuraDelay/DodgeRadius/DodgeCooldown/FarmDelay/
--- PistolSpeed/PistolReturnDelay/EspMaxDistance (адекватные дефолты вшиты),
--- FakeBomb (видно только себе), RemoveRagdolls/RemoveBarriers (балласт),
--- NetworkStatus/mount-инфо, HumanizeDelays/GlideSpeed (внутренние).
--- AutoDodge: 1 слайдер профиля (Осторожно/Баланс/Агрессивно) вместо 4.
--- Эмоции: dropdown вместо 6 кнопок. ТП: dropdown вместо 3 кнопок.
--- Прогноз победы остаётся живым полем в ИГРОКАХ (ТЗ юзера).
+-- v0.5.0: БЫСТРОЕ МЕНЮ ПУСТО ПО УМОЛЧАНИЮ — кнопки выбираются в СИСТЕМЕ
+-- (реестр QuickActions, тоглы пишут settings.QuickButtons, меню ребилдится
+-- на лету). Бой переписан на Activate-first (см. combat.lua): анимации
+-- замаха/выстрела/броска играются, кнопки не умирают на «роли неизвестны» —
+-- при неизвестных ролях выстрел/бросок летят в точку прицела. В СИСТЕМЕ
+-- кнопка «Восстановить анимации» (снятие залипшего рагдолла/PlatformStand).
+-- После подбора пистолет сразу экипируется.
 -- Mobile: всё тапами; PC: горячие клавиши G/H/J/K.
 
 local Players = game:GetService("Players")
@@ -53,6 +51,9 @@ end
 function Features:Build()
     local colors = self.Config.Colors
     local settings = self.Config.Settings
+
+    -- РЕЕСТР КНОПОК строится ДО вкладок: секция «СИСТЕМА» итерирует его.
+    self.QuickActions = self:BuildQuickRegistry()
 
     local homeTab = self.UI:CreateTab("Главная", "HOME", colors.Accent)
     local playersTab = self.UI:CreateTab("Игроки", "ESP", colors.ESP)
@@ -298,6 +299,22 @@ function Features:Build()
 
     -- ============================== СИСТЕМА ==============================
     self.UI:AddHeading(systemTab, "Система")
+    self.UI:AddHeading(systemTab, "Кнопки быстрого меню")
+    self.UI:AddText(systemTab, "Как это работает", "выбери кнопки — они появятся в квадрате на экране")
+    for _, action in ipairs(self.QuickActions) do
+        local isEnabled = false
+        for _, id in ipairs(settings.QuickButtons or {}) do
+            if id == action.Id then isEnabled = true break end
+        end
+        self.UI:AddToggle(systemTab, action.Label, isEnabled, function(value)
+            self:SetQuickButton(action.Id, value)
+        end)
+    end
+    self.UI:AddSection(systemTab, "Обслуживание")
+    self.UI:AddButton(systemTab, "Восстановить анимации (если персонаж залип)", function()
+        local ok, message = self.Troll.RepairAnimations()
+        if self.StealthStatus then pcall(function() self.StealthStatus:Set(tostring(message)) end) end
+    end)
     self.UI:AddButton(systemTab, "Диагностика в консоль (F9)", function()
         local registry = self.Stealth and self.Stealth.Registry
         if registry and registry.Diag then
@@ -322,38 +339,145 @@ function Features:Build()
     self.Hud = self.UI:AddFloatingHud()
     self.Hud:SetVisible(settings.ShowTimerHud ~= false)
 
-    self.QuickMenu = self.UI:AddQuickMenu({
-        { Text = "ВЫСТРЕЛ", Color = colors.Combat, Callback = function()
-            local ok, message = self.Combat.SheriffAimShot()
-            if self.CombatStatus then pcall(function() self.CombatStatus:Set("SheriffAim: " .. tostring(message)) end) end
-        end },
-        { Text = "НОЖ", Color = colors.Danger, Callback = function()
-            local ok, message = self.Combat.MurderAimThrow()
-            if self.CombatStatus then pcall(function() self.CombatStatus:Set("MurderAim: " .. tostring(message)) end) end
-        end },
-        { Text = "ПИСТ", Color = colors.Movement, Callback = function()
-            local ok, message = self:GrabGunNow()
-            if self.PistolStatus then pcall(function() self.PistolStatus:Set(ok and tostring(message) or ("ошибка: " .. tostring(message))) end) end
-        end },
-        { Text = "ФЕЙК-СМЕРТЬ", Color = colors.Misc, Callback = function()
-            local message = self.Troll.CycleFakeDeath()
-            if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
-        end },
-        { Text = "ФЕЙК НОЖ", Color = colors.Success, Callback = function()
-            local ok, message = self.Troll.FakeKnife()
-            if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
-        end },
-        { Text = "ГЛИТЧ", Color = colors.World, Callback = function()
-            local ok, message = self.Troll.SetFakeGlitch(not self.Troll.FakeGlitch)
-            if self.TrollStatus then pcall(function() self.TrollStatus:Set(tostring(message)) end) end
-        end },
-    })
+    -- ============================== БЫСТРОЕ МЕНЮ ==============================
+    -- Пустое по умолчанию: юзер сам выбирает кнопки в СИСТЕМЕ (ТЗ v0.5.0:
+    -- «убрать все кнопки, дать выбрать какие нужны»). Квадрат с пустым
+    -- списком показывает подсказку. Реестр уже построен в начале Build().
+    self.QuickMenu = self.UI:AddQuickMenu(self:BuildQuickActions())
     pcall(function() self.QuickMenu:SetVisible(settings.ShowQuickMenu ~= false) end)
 end
 
 ---------------------------------------------------------------------
 -- Helpers
 ---------------------------------------------------------------------
+
+-- Безопасно обновить текстовый статус на любой вкладке.
+function Features:SetStatus(field, text)
+    local label = self[field]
+    if label and label.Set then pcall(function() label:Set(text) end) end
+end
+
+-- Реестр ВСЕХ доступных кнопок быстрого меню. Label — для тоглов в
+-- СИСТЕМЕ, Text — короткая надпись на кнопке, Callback — действие.
+function Features:BuildQuickRegistry()
+    local colors = self.Config.Colors
+    return {
+        { Id = "shoot",     Label = "ВЫСТРЕЛ в маньяка (шериф)", Text = "ВЫСТРЕЛ", Color = colors.Combat,
+          Callback = function()
+              local ok, message = self.Combat.SheriffAimShot()
+              self:SetStatus("CombatStatus", "SheriffAim: " .. tostring(message))
+          end },
+        { Id = "stab",      Label = "УДАР ножом (ближайший)", Text = "УДАР", Color = colors.Danger,
+          Callback = function()
+              local ok, message = self.Combat.StabNearest()
+              self:SetStatus("CombatStatus", "Stab: " .. tostring(message))
+          end },
+        { Id = "throw",     Label = "БРОСОК ножа в шерифа (маньяк)", Text = "БРОСОК", Color = colors.Danger,
+          Callback = function()
+              local ok, message = self.Combat.MurderAimThrow()
+              self:SetStatus("CombatStatus", "MurderAim: " .. tostring(message))
+          end },
+        { Id = "throwaim",  Label = "БРОСОК в точку прицела", Text = "В ПРИЦЕЛ", Color = colors.Danger,
+          Callback = function()
+              local ok, message = self.Combat.ThrowAtAim()
+              self:SetStatus("CombatStatus", "Throw: " .. tostring(message))
+          end },
+        { Id = "killall",   Label = "KILL ALL (все в радиусе)", Text = "KILL ALL", Color = colors.Danger,
+          Callback = function()
+              local ok, message = self.Combat.KillAll()
+              self:SetStatus("CombatStatus", ok and ("KILL ALL: " .. message) or ("ошибка: " .. message))
+          end },
+        { Id = "aura",      Label = "Нож-аура ВКЛ/ВЫКЛ", Text = "АУРА", Color = colors.Combat,
+          Callback = function()
+              self.Combat.SetAura(not self.Combat.AuraEnabled)
+              self:SetStatus("CombatStatus", self.Combat.AuraEnabled and "аура включена" or "аура выключена")
+          end },
+        { Id = "gun",       Label = "ПИСТОЛЕТ — подобрать и экипировать", Text = "ПИСТОЛЕТ", Color = colors.Movement,
+          Callback = function()
+              local ok, message = self:GrabGunNow()
+              self:SetStatus("PistolStatus", ok and tostring(message) or ("ошибка: " .. tostring(message)))
+          end },
+        { Id = "fakedeath", Label = "ФЕЙК-СМЕРТЬ (по кругу)", Text = "ФЕЙК-СМЕРТЬ", Color = colors.Misc,
+          Callback = function()
+              local message = self.Troll.CycleFakeDeath()
+              self:SetStatus("TrollStatus", tostring(message))
+          end },
+        { Id = "fakeknife", Label = "ФЕЙК НОЖ на руке", Text = "ФЕЙК НОЖ", Color = colors.Success,
+          Callback = function()
+              local ok, message = self.Troll.FakeKnife()
+              self:SetStatus("TrollStatus", tostring(message))
+          end },
+        { Id = "fakegun",   Label = "ФЕЙК ПИСТОЛЕТ", Text = "ФЕЙК ПИСТ", Color = colors.Success,
+          Callback = function()
+              local ok, message = self.Troll.FakeGun()
+              self:SetStatus("TrollStatus", tostring(message))
+          end },
+        { Id = "glitch",    Label = "СПИД-ГЛИТЧ вкл/выкл", Text = "ГЛИТЧ", Color = colors.World,
+          Callback = function()
+              local ok, message = self.Troll.SetFakeGlitch(not self.Troll.FakeGlitch)
+              self:SetStatus("TrollStatus", tostring(message))
+          end },
+        { Id = "emote",     Label = "ЭМОЦИЯ (последняя выбранная)", Text = "ЭМОЦИЯ", Color = colors.Misc,
+          Callback = function()
+              local ok, message = self.Troll.PlayEmote(self.EmoteChoice or "Zen")
+              self:SetStatus("TrollStatus", tostring(message))
+          end },
+        { Id = "tpmurder",  Label = "ТП к маньяку", Text = "К МАНЬЯКУ", Color = colors.ESP,
+          Callback = function()
+              local list = self.Roles.FindByRole("Murderer")
+              if #list > 0 then
+                  self:GlideToPlayer(list[1])
+                  self:SetStatus("RoleStatus", "лечу к маньяку: " .. list[1])
+              else
+                  self:SetStatus("RoleStatus", "маньяк неизвестен — жди раунд")
+              end
+          end },
+        { Id = "tpsheriff", Label = "ТП к шерифу", Text = "К ШЕРИФУ", Color = colors.ESP,
+          Callback = function()
+              local list = self.Roles.FindByRole("Sheriff")
+              if #list > 0 then
+                  self:GlideToPlayer(list[1])
+                  self:SetStatus("RoleStatus", "лечу к шерифу: " .. list[1])
+              else
+                  self:SetStatus("RoleStatus", "шериф неизвестен — жди раунд")
+              end
+          end },
+        { Id = "repair",    Label = "РЕМОНТ анимаций/персонажа", Text = "РЕМОНТ", Color = colors.Success,
+          Callback = function()
+              local ok, message = self.Troll.RepairAnimations()
+              self:SetStatus("TrollStatus", tostring(message))
+          end },
+    }
+end
+
+-- Собрать действия для панели из settings.QuickButtons (список id).
+function Features:BuildQuickActions()
+    local want = {}
+    for _, id in ipairs(self.Config.Settings.QuickButtons or {}) do want[id] = true end
+    local enabled = {}
+    for _, action in ipairs(self.QuickActions or {}) do
+        if want[action.Id] then
+            enabled[#enabled + 1] = { Text = action.Text, Color = action.Color, Callback = action.Callback }
+        end
+    end
+    return enabled
+end
+
+-- Вкл/выкл кнопку быстрого меню: обновить настройки + перерисовать панель.
+function Features:SetQuickButton(id, value)
+    local settings = self.Config.Settings
+    local want = {}
+    for _, existing in ipairs(settings.QuickButtons or {}) do want[existing] = true end
+    want[id] = value and true or false
+    local list = {}
+    for _, action in ipairs(self.QuickActions or {}) do
+        if want[action.Id] then list[#list + 1] = action.Id end
+    end
+    settings.QuickButtons = list
+    if self.QuickMenu and self.QuickMenu.Rebuild then
+        pcall(function() self.QuickMenu:Rebuild(self:BuildQuickActions()) end)
+    end
+end
 
 -- Профиль AutoDodge: пересчитывает радиус/силу/кулдаун в settings.
 function Features:ApplyDodgeProfile(index)
@@ -415,6 +539,18 @@ function Features:GrabGunNow()
             waited = waited + task.wait(0.2)
         end
         if not drop.Parent then
+            -- подобрали: сразу экипируем, чтобы ВЫСТРЕЛ работал без лишнего тапа
+            task.wait(0.15)
+            pcall(function()
+                local character = localPlayer.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+                local gunTool = character and character:FindFirstChild("Gun")
+                    or (backpack and backpack:FindFirstChild("Gun"))
+                if gunTool and humanoid and gunTool.Parent ~= character then
+                    humanoid:EquipTool(gunTool)
+                end
+            end)
             task.wait(settings.PistolReturnDelay or 0.8)
             self.Stealth.GlideTo(before.Position, { Speed = settings.PistolSpeed or 110 })
         end

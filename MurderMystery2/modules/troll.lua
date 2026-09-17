@@ -456,11 +456,60 @@ end
 -- Спид-глитч (см. SetFakeGlitch): отключение в Shutdown и при выгрузке
 ---------------------------------------------------------------------
 
+---------------------------------------------------------------------
+-- Ремонт анимаций: снимаем залипший рагдолл/PlatformStand, поднимаем
+-- персонажа, включаем родной Animate-скрипт, возвращаем скорость.
+-- Кнопка в СИСТЕМЕ — «скорая помощь» после любого троллинга/глюка.
+---------------------------------------------------------------------
+
+function Troll.RepairAnimations()
+    local character, humanoid, root = getCharacterParts()
+    if not humanoid then return false, "нет персонажа" end
+    -- фейк-смерть выключаем через штатный путь (вернёт сохранённые значения)
+    pcall(function() Troll.SetFakeDeath(nil) end)
+    pcall(function()
+        humanoid.PlatformStand = false
+        humanoid.AutoRotate = true
+        humanoid.Sit = false
+    end)
+    pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    -- родной Animate-скрипт: если кто-то его выключил — включаем
+    local animate = character and character:FindFirstChild("Animate")
+    local animateFixed = false
+    if animate and animate:IsA("LocalScript") and animate.Disabled then
+        pcall(function()
+            animate.Disabled = false
+            animateFixed = true
+        end)
+    end
+    -- сбиваем застрявшие эмот-треки
+    if emoteTrack then
+        pcall(function() emoteTrack:Stop(0.1) end)
+        emoteTrack = nil
+    end
+    -- скорость/прыжок из настроек (16/50 если фичи выключены)
+    local settings = ConfigRef and ConfigRef.Settings or {}
+    pcall(function()
+        humanoid.WalkSpeed = settings.WalkSpeed or 16
+        humanoid.UseJumpPower = true
+        humanoid.JumpPower = settings.JumpPower or 50
+    end)
+    if root and root.Parent then
+        pcall(function()
+            -- снять возможный якорь от прошлых экспериментов; позу поднимает
+            -- ChangeState(GettingUp) выше — поворот вручную не трогаем
+            root.Anchored = false
+        end)
+    end
+    local message = animateFixed and "анимации восстановлены (Animate был выключен)" or "анимации восстановлены"
+    return true, message
+end
+
 function Troll.Configure(config, stealth)
     ConfigRef = config
     StealthRef = stealth
     Troll.Debug = config.Settings.DebugLogs == true
-    connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function()
+    connections[#connections + 1] = localPlayer.CharacterAdded:Connect(function(character)
         if Troll.ActiveKind then
             Troll.ActiveKind = nil
             savedState = nil
@@ -468,6 +517,16 @@ function Troll.Configure(config, stealth)
             fakeBombModel = nil
             note("fake death cleared by respawn")
         end
+        -- страховка: новый персонаж обязан быть «живым» и анимированным
+        task.delay(0.5, function()
+            pcall(function()
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.PlatformStand = false
+                    humanoid.AutoRotate = true
+                end
+            end)
+        end)
     end)
 end
 

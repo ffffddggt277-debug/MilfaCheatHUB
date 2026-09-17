@@ -1162,11 +1162,11 @@ function UI.new(config, stealth)
             end)
         end
 
-        -- панель действий
+        -- панель действий (пересобирается через Rebuild — выбор кнопок в СИСТЕМЕ)
         local panel = Instance.new("Frame")
         panel.Name = randomGuiName()
-        panel.Size = UDim2.fromOffset(128, 8 + math.max(1, #actions) * 42)
-        panel.Position = UDim2.new(1, -70, 0.5, -27 - (8 + math.max(1, #actions) * 42) - 8)
+        panel.Size = UDim2.fromOffset(128, 50)
+        panel.Position = UDim2.new(1, -70, 0.5, -58)
         panel.BackgroundColor3 = colors.Background
         panel.BackgroundTransparency = 0.06
         panel.BorderSizePixel = 0
@@ -1190,27 +1190,58 @@ function UI.new(config, stealth)
                 quick.Position.Y.Scale, quick.Position.Y.Offset - panel.Size.Y.Offset - 8)
         end
 
-        for index, action in ipairs(actions or {}) do
-            local item = Instance.new("TextButton")
-            item.Name = randomGuiName()
-            item.LayoutOrder = index
-            item.Size = UDim2.fromOffset(114, 36)
-            item.BackgroundColor3 = colors.Panel
-            item.BackgroundTransparency = 0.1
-            item.BorderSizePixel = 0
-            item.Text = tostring(action.Text or "?")
-            item.TextColor3 = action.Color or colors.Text
-            item.Font = Enum.Font.Code
-            item.TextSize = 12
-            item.Parent = panel
-            corner(item, 9)
-            stroke(item, action.Color or colors.Border, 1, 0.2)
-            item.MouseButton1Click:Connect(function()
-                task.spawn(function()
-                    if action.Callback then action.Callback() end
-                end)
-            end)
+        -- Пересборка кнопок: старт + каждое изменение набора в СИСТЕМЕ.
+        -- Пустой список = подсказка «выбери кнопки в СИСТЕМЕ».
+        local function rebuild(newActions)
+            for _, child in ipairs(panel:GetChildren()) do
+                if child:IsA("TextButton") then child:Destroy() end
+            end
+            local list = {}
+            for _, action in ipairs(newActions or {}) do list[#list + 1] = action end
+
+            if #list == 0 then
+                local hint = Instance.new("TextButton")
+                hint.Name = randomGuiName()
+                hint.LayoutOrder = 1
+                hint.Size = UDim2.fromOffset(126, 36)
+                hint.BackgroundColor3 = colors.Panel
+                hint.BackgroundTransparency = 0.25
+                hint.BorderSizePixel = 0
+                hint.Text = "Кнопок нет.\nВыбери в СИСТЕМЕ"
+                hint.TextColor3 = colors.Muted
+                hint.Font = Enum.Font.Code
+                hint.TextSize = 10
+                hint.AutoButtonColor = false
+                hint.Parent = panel
+                corner(hint, 9)
+                stroke(hint, colors.Border, 1, 0.2)
+            else
+                for index, action in ipairs(list) do
+                    local item = Instance.new("TextButton")
+                    item.Name = randomGuiName()
+                    item.LayoutOrder = index
+                    item.Size = UDim2.fromOffset(114, 36)
+                    item.BackgroundColor3 = colors.Panel
+                    item.BackgroundTransparency = 0.1
+                    item.BorderSizePixel = 0
+                    item.Text = tostring(action.Text or "?")
+                    item.TextColor3 = action.Color or colors.Text
+                    item.Font = Enum.Font.Code
+                    item.TextSize = 12
+                    item.Parent = panel
+                    corner(item, 9)
+                    stroke(item, action.Color or colors.Border, 1, 0.2)
+                    item.MouseButton1Click:Connect(function()
+                        task.spawn(function()
+                            if action.Callback then action.Callback() end
+                        end)
+                    end)
+                end
+            end
+            panel.Size = UDim2.fromOffset(128, 8 + math.max(1, #list) * 42)
+            if open then place() end
         end
+        rebuild(actions)
 
         -- перетаскивание квадратной кнопки (мышь + палец)
         local dragging = false
@@ -1249,6 +1280,7 @@ function UI.new(config, stealth)
         return {
             Frame = quick,
             Panel = panel,
+            Rebuild = function(_, newActions) rebuild(newActions) end,
             SetVisible = function(_, value)
                 quick.Visible = value == true
                 if not value then panel.Visible = false; open = false end

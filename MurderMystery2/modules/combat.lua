@@ -1,19 +1,36 @@
 -- MilfaCheatHUB • Murder Mystery 2
--- Combat v0.4.1 (FIXED against live scripts: KittyHub/R3TH/StyearX/MM2 Mods).
+-- Combat v0.5.0 — REWRITE (Activate-first).
 --
--- Причины красных кругов v0.2.0 и как теперь:
---   * удар ножом: ремоуты Events.KnifeStabbed/HandleTouched НЕ наносят урон в
---     актуальной MM2. Рабочий путь (подтверждён 3 скриптами):
---     Knife.Stab:FireServer("Down") и через ~0.06с ("Up") — пара вниз/вверх;
---   * убийство на дистанции: сервер засчитывает касание ножа, поэтому все
---     рабочие ауры делают ТП-стаб: мигнуть к цели (2.5 стада за спину),
---     stab, мигнуть обратно. Сделали режим по умолчанию;
---   * выстрел шерифа: Gun.KnifeLocal.CreateBeam.RemoteFunction(1, pos, тег);
---     сервер сам проверяет попадание. Теги: "AH2" (новые), "AH" (старые);
---     фолбэк Gun.KnifeServer.ShootGun(1, 0, "AH");
---   * бросок ножа: Knife.Events.KnifeThrown:FireServer(fromCF, toCF), где
---     fromCF — ОРИЕНТИРОВАННЫЙ (CFrame.new(from, to)), иначе нож летит мимо;
---   * всё завязано на роли — починкой roles.lua они снова живые.
+-- Почему v0.4.x «не работал» (разобрано по живым хабам CGS_Movil/fogyhub/
+-- KittyHub/StyearX, скачанным свежими версиями):
+--   1) Мы шлём ТОЛЬКО сырые ремоуты. Рабочие мобильные хабы сначала дергают
+--      tool:Activate() — это запускает СОБСТВЕННЫЙ LocalScript тула: он сам
+--      играет замах/выстрел (анимации!), шлёт правильные ремоуты и звук.
+--      CGS_Movil (мобильный!): knife:Activate() в ауре, gun:Activate() в
+--      TriggerBot/AutoShoot. fogyhub: TP + knife:Activate() + firetouch.
+--   2) findTool мог вернуть нож ИЗ РЮКЗАКА — сервер отклоняет удары из
+--      рюкзака. Теперь ensureEquipped ЖДЁТ, пока тул окажется в Character.
+--   3) У актуального MM2 есть ремоут Gun.Shoot:FireServer(fromCF, toCF)
+--      (StyearX) — добавлен как ПЕРВЫЙ канал выстрела, CreateBeam/AH2 —
+--      второй, ShootGun/AH — третий.
+--   4) ТП-стаб без якоря HRP флингует тело (fogyhub якорит). Теперь якорим.
+--   5) Кнопки умирали на «роли не определены». Теперь при неизвестных ролях
+--      выстрел/бросок летят в ТОЧКУ ПРИЦЕЛА — кнопка всегда делает видимое
+--      действие.
+--
+-- Каналы удара (все сразу, сервер дедуплицирует):
+--   knife:Activate() + swing-анимация тула
+--   Knife.Stab:FireServer("Down") ... 0.07с ... ("Up")     (R3TH/KittyHub)
+--   Knife.Events.KnifeStabbed:FireServer()                  (StyearX)
+--   Knife.Events.HandleTouched:FireServer(корень цели)      (StyearX)
+--   firetouchinterest(нож, корень цели)                     (fogyhub)
+-- Каналы выстрела:
+--   Gun.Shoot:FireServer(rightHandCF, CFrame.new(pos))      (StyearX)
+--   Gun.KnifeLocal.CreateBeam.RemoteFunction(1, pos, "AH2"/"AH") (KittyHub)
+--   Gun.KnifeServer.ShootGun(1, pos, "AH")                  (R3TH/MM2fun)
+-- Бросок: Knife.Events.KnifeThrown:FireServer(from ОРИЕНТИРОВАННЫЙ,
+--   to = CFrame.new(pos) * (from - from.Position)) + анимация броска с тула
+--   (KittyHub: читаем Animation с ножа, играем через Animator до броска).
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -44,7 +61,6 @@ local dodgeConnections = {}
 local watchedProjectiles = {}
 
 local SHOT_TAGS = { "AH2", "AH" }
-local shotTagIndex = 1
 
 local function note(...)
     if Combat.Debug then print("[mh combat]", ...) end
@@ -63,19 +79,35 @@ local function getCharacterParts()
     return character, character:FindFirstChild("HumanoidRootPart")
 end
 
--- Найти тул (в руке или рюкзаке), при необходимости экипировать.
-local function findTool(character, name)
-    if character and character:FindFirstChild(name) then
-        return character:FindFirstChild(name)
-    end
+---------------------------------------------------------------------
+-- Экипировка: тул ОБЯЗАН оказаться в Character, иначе сервер отклоняет.
+---------------------------------------------------------------------
+
+local function ensureEquipped(toolName, timeout)
+    local character = localPlayer.Character
+    if not character then return nil end
+    local held = character:FindFirstChild(toolName)
+    if held then return held end
+
     local backpack = localPlayer:FindFirstChildOfClass("Backpack")
-    local stowed = backpack and backpack:FindFirstChild(name)
-    if stowed and character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then pcall(function() humanoid:EquipTool(stowed) end) end
-        return character:FindFirstChild(name)
+    local stowed = backpack and backpack:FindFirstChild(toolName)
+    if not stowed then return nil end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+    pcall(function() humanoid:EquipTool(stowed) end)
+
+    local limit = timeout or 1.0
+    local began = os.clock()
+    while os.clock() - began < limit do
+        character = localPlayer.Character
+        held = character and character:FindFirstChild(toolName)
+        if held then return held end
+        task.wait(0.03)
     end
-    return stowed
+    -- не экипировался: ремоуты из рюкзака сервер отклоняет — честный nil
+    character = localPlayer.Character
+    return character and character:FindFirstChild(toolName) or nil
 end
 
 local function aliveTargetRoot(targetPlayer)
@@ -89,12 +121,14 @@ local function aliveTargetRoot(targetPlayer)
     return nil
 end
 
--- Фолбэк роли по тулу в Character (реплицируется всем): если детект ролей
--- мигнул/опоздал, а нож/пистолет у нас В РУКЕ — роль очевидна. Это снимает
--- главный симптом «половина не работает» — жёсткий гейт по протухшему роли.
+-- Фолбэк роли по оружию: тул в Character (реплицируется всем) ИЛИ в своём
+-- Backpack (шериф спавнится с пистолетом В РЮКЗАКЕ, до экипировки — именно
+-- этот случай раньше отсекал кнопку «ВЫСТРЕЛ» словом «нужна роль»).
 local function holdingTool(name)
     local character = localPlayer.Character
-    return character and character:FindFirstChild(name) ~= nil
+    if character and character:FindFirstChild(name) then return true end
+    local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+    return (backpack and backpack:FindFirstChild(name) ~= nil) or false
 end
 
 local function amMurderer()
@@ -107,45 +141,122 @@ local function amSheriff()
     return holdingTool("Gun") == true
 end
 
--- Прямая видимость между корнями (исключаем обе модели).
-local function hasLineOfSight(myRoot, targetRoot, targetCharacter)
-    local origin = myRoot.Position
-    local direction = targetRoot.Position - origin
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    local exclude = {}
-    if localPlayer.Character then exclude[#exclude + 1] = localPlayer.Character end
-    if targetCharacter then exclude[#exclude + 1] = targetCharacter end
-    params.FilterDescendantsInstances = exclude
-    local hit = workspace:Raycast(origin, direction, params)
-    return hit == nil
-end
+---------------------------------------------------------------------
+-- Анимации тулов: играем замах/выстрел/бросок сами (KittyHub-подход:
+-- читаем Animation с тула, грузим в Animator — реплицируется всем).
+---------------------------------------------------------------------
 
-local function nearbyTargets(radius, maxCount)
-    local _, myRoot = getCharacterParts()
-    if not myRoot then return {} end
-    local list = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and RolesRef.IsAlive(player.Name) then
-            local root = aliveTargetRoot(player)
-            if root and (root.Position - myRoot.Position).Magnitude <= radius then
-                list[#list + 1] = { Player = player, Root = root }
-                if maxCount and #list >= maxCount then break end
+local animCache = {}   -- [animationInstance] = track
+
+local function findToolAnimation(tool, patterns)
+    if not tool then return nil end
+    local only, count = nil, 0
+    local ok, result = pcall(function()
+        local matched = nil
+        for _, inst in ipairs(tool:GetDescendants()) do
+            if inst:IsA("Animation") and inst.AnimationId ~= "" then
+                count = count + 1
+                only = inst
+                local lowered = string.lower(inst.Name)
+                for _, pattern in ipairs(patterns or {}) do
+                    if string.find(lowered, pattern, 1, true) then
+                        matched = inst
+                        break
+                    end
+                end
+                if matched then break end
             end
         end
+        return matched
+    end)
+    if ok and result then return result end
+    -- ни один не совпал по имени: одна анимация на тул = она и есть нужная
+    if count == 1 then return only end
+    return nil
+end
+
+local function animatorOf(character)
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+    return humanoid:FindFirstChildOfClass("Animator") or humanoid
+end
+
+-- Проиграть анимацию тула; возвращает трек или nil. Перезапускаем, если
+-- уже играет (два удара подряд = два замаха, а не каша).
+local function playToolAnimation(tool, patterns)
+    if ConfigRef and ConfigRef.Settings.CombatAnimations == false then return nil end
+    local character = localPlayer.Character
+    local animator = animatorOf(character)
+    local animation = findToolAnimation(tool, patterns)
+    if not animation or not animator then return nil end
+
+    local track = animCache[animation]
+    if not track or not track.Animator or track.Animator ~= animator then
+        local ok, loaded = pcall(function() return animator:LoadAnimation(animation) end)
+        if not ok or not loaded then return nil end
+        track = loaded
+        animCache[animation] = track
     end
-    return list
+    pcall(function()
+        if track.IsPlaying then track:Stop(0) end
+        track:Play(0.05)
+    end)
+    return track
+end
+
+local function stopCachedAnimation(tool)
+    if not tool then return end
+    pcall(function()
+        for _, inst in ipairs(tool:GetDescendants()) do
+            if inst:IsA("Animation") and animCache[inst] then
+                local track = animCache[inst]
+                if track.IsPlaying then track:Stop(0.1) end
+            end
+        end
+    end)
 end
 
 ---------------------------------------------------------------------
--- Нож: удар (Down/Up пара) и ТП-стаб
+-- Точка прицела (когда роли неизвестны — бьём туда, куда смотрит юзер)
 ---------------------------------------------------------------------
 
--- Рабочий удар: Stab("Down") + отложенный "Up" (без него тул залипает),
--- плюс страховочный комбо StyearX: KnifeStabbed + HandleTouched(корень цели)
--- — свежие хабы шлют ОБА канала, сервер засчитывает любой.
-local function stabWith(knife, targetRoot)
+local function aimPoint(fallbackDistance)
+    local camera = workspace.CurrentCamera
+    if not camera then return nil end
+    local point = nil
+    pcall(function()
+        local mouse = UserInputService:GetMouseLocation()
+        local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local exclude = {}
+        if localPlayer.Character then exclude[#exclude + 1] = localPlayer.Character end
+        params.FilterDescendantsInstances = exclude
+        local result = workspace:Raycast(ray.Origin, ray.Direction * 600, params)
+        point = result and result.Position or (ray.Origin + ray.Direction * (fallbackDistance or 200))
+    end)
+    if not point then
+        point = (camera.CFrame * CFrame.new(0, 0, -(fallbackDistance or 200))).Position
+    end
+    return point
+end
+
+---------------------------------------------------------------------
+-- Нож: замах всеми каналами (Activate + Stab Down/Up + StyearX-пара + тач)
+---------------------------------------------------------------------
+
+local function swingKnife(knife, targetRoot)
     local ok = false
+    -- 1) Собственный LocalScript тула: анимация замаха + его ремоуты.
+    pcall(function()
+        if knife.Activate then
+            knife:Activate()
+            ok = true
+        end
+    end)
+    -- 2) Свою swing-анимацию тоже играем (если у тула нет локального скрипта).
+    pcall(function() playToolAnimation(knife, { "swing", "stab", "slash", "attack" }) end)
+    -- 3) Прямая пара Down/Up (R3TH/KittyHub).
     pcall(function()
         local stab = knife:FindFirstChild("Stab")
         if stab and stab:IsA("RemoteEvent") then
@@ -155,176 +266,351 @@ local function stabWith(knife, targetRoot)
                 pcall(function() stab:FireServer("Up") end)
             end)
         end
-        -- страховка (StyearX KnifeAura/KillAll): пара KnifeStabbed+HandleTouched
+    end)
+    -- 4) Страховка StyearX: KnifeStabbed + HandleTouched(корень цели).
+    pcall(function()
         local events = knife:FindFirstChild("Events")
         if events then
             local stabbed = events:FindFirstChild("KnifeStabbed")
             if stabbed and stabbed:IsA("RemoteEvent") then
-                pcall(function() stabbed:FireServer() end)
+                stabbed:FireServer()
                 ok = true
                 local touched = events:FindFirstChild("HandleTouched")
                 if touched and touched:IsA("RemoteEvent") and targetRoot then
-                    pcall(function() touched:FireServer(targetRoot) end)
+                    touched:FireServer(targetRoot)
                 end
             end
+        end
+    end)
+    -- 5) Физический тач (fogyhub) — сервер считает касание ножа.
+    pcall(function()
+        local handle = knife:FindFirstChild("Handle") or knife:FindFirstChildWhichIsA("BasePart")
+        if handle and targetRoot and type(firetouchinterest) == "function" then
+            firetouchinterest(handle, targetRoot, 0)
+            firetouchinterest(handle, targetRoot, 1)
         end
     end)
     return ok
 end
 
--- ТП-стаб: мигнуть за спину цели, удар, вернуть то же тело обратно.
-local function tpStabTarget(knife, targetRoot, targetCharacter)
+-- ТП-стаб: якорим корень (fogyhub), мигаем за спину цели (2.5 стада),
+-- замах всеми каналами, возвращаемся. Якорь держит физику от флинга.
+local function tpStabTarget(targetRoot, targetCharacter)
     local _, myRoot = getCharacterParts()
     if not myRoot then return false end
+    local knife = ensureEquipped("Knife", 0.8)
+    if not knife then
+        Combat.Status = "нож не найден/не экипировался"
+        return false
+    end
+
     local origin = myRoot.CFrame
+    local wasAnchored = myRoot.Anchored
     local moved = false
     local dist = (targetRoot.Position - myRoot.Position).Magnitude
     if dist > 6 then
-        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2.5)
+        pcall(function()
+            myRoot.Anchored = true
+            myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2.5)
+        end)
         moved = true
-        task.wait(jitter(0.08))
+        task.wait(jitter(0.07))
     end
-    local freshKnife = localPlayer.Character and localPlayer.Character:FindFirstChild("Knife") or knife
-    local hit = stabWith(freshKnife, targetRoot)
-    -- физический тач-фолбэк для экзекьюторов с firetouchinterest
+
+    local fresh = localPlayer.Character
+    local freshKnife = fresh and fresh:FindFirstChild("Knife")
+    local hit = swingKnife(freshKnife or knife, targetRoot)
+
+    task.wait(jitter(0.12))
     pcall(function()
-        local handle = freshKnife and (freshKnife:FindFirstChild("Handle") or freshKnife:FindFirstChildWhichIsA("BasePart"))
-        if handle and type(firetouchinterest) == "function" then
-            firetouchinterest(handle, targetRoot, 0)
-            firetouchinterest(handle, targetRoot, 1)
+        if myRoot.Parent then
+            if moved then myRoot.CFrame = origin end
+            myRoot.Anchored = wasAnchored
         end
     end)
-    task.wait(jitter(0.1))
-    if moved and myRoot.Parent then
-        myRoot.CFrame = origin
-    end
     return hit
 end
 
----------------------------------------------------------------------
--- Выстрел шерифа (CreateBeam + ShootGun фолбэк, теги AH2/AH)
----------------------------------------------------------------------
-
-local function shotRemote(gun)
-    local knifeLocal = gun:FindFirstChild("KnifeLocal")
-    local createBeam = knifeLocal and knifeLocal:FindFirstChild("CreateBeam")
-    if createBeam then
-        local rf = createBeam:FindFirstChildOfClass("RemoteFunction")
-        if rf then return rf end
-        if createBeam:IsA("RemoteFunction") then return createBeam end
+-- Удар без телепорта (цель в 6 стадах): замах на месте.
+local function stabInPlace(targetRoot)
+    local knife = ensureEquipped("Knife", 0.8)
+    if not knife then
+        Combat.Status = "нож не найден/не экипировался"
+        return false
     end
-    -- фолбэк: старый путь R3TH — Gun.KnifeServer.ShootGun
-    local knifeServer = gun:FindFirstChild("KnifeServer")
-    local shootGun = knifeServer and knifeServer:FindFirstChild("ShootGun")
-    if shootGun and shootGun:IsA("RemoteFunction") then return shootGun end
-    local any = gun:FindFirstChildWhichIsA("RemoteFunction", true)
-    return any
+    return swingKnife(knife, targetRoot)
 end
 
-local function fireShot(gun, targetPosition)
-    local remote = shotRemote(gun)
-    if not remote then return false, "ремоут выстрела не найден" end
-    local isShootGun = remote.Parent and remote.Parent.Name == "ShootGun"
-    local ok = pcall(function()
-        if isShootGun then
-            remote:InvokeServer(1, 0, SHOT_TAGS[shotTagIndex])
-        else
-            remote:InvokeServer(1, targetPosition, SHOT_TAGS[shotTagIndex])
+---------------------------------------------------------------------
+-- Выстрел: Gun.Shoot -> CreateBeam(AH2/AH) -> ShootGun; Activate — фолбэк
+---------------------------------------------------------------------
+
+local function findShootRemote(gun)
+    local found = nil
+    pcall(function()
+        -- новый канал (StyearX): RemoteEvent с именем Shoot где-то в туле
+        for _, inst in ipairs(gun:GetDescendants()) do
+            if inst:IsA("RemoteEvent") and string.lower(inst.Name) == "shoot" then
+                found = inst
+                break
+            end
+        end
+        if not found and gun:FindFirstChild("Shoot") then
+            found = gun:FindFirstChild("Shoot")
         end
     end)
-    if not ok then
-        -- переключаем тег: сервер принял другой формат
-        shotTagIndex = (shotTagIndex % #SHOT_TAGS) + 1
+    return found
+end
+
+local function beamRemote(gun)
+    local remote = nil
+    pcall(function()
+        local knifeLocal = gun:FindFirstChild("KnifeLocal")
+        local createBeam = knifeLocal and knifeLocal:FindFirstChild("CreateBeam")
+        if createBeam then
+            remote = createBeam:FindFirstChildOfClass("RemoteFunction")
+                or (createBeam:IsA("RemoteFunction") and createBeam) or nil
+        end
+    end)
+    return remote
+end
+
+local function shootGunRemote(gun)
+    local remote = nil
+    pcall(function()
+        local knifeServer = gun:FindFirstChild("KnifeServer")
+        local shootGun = knifeServer and knifeServer:FindFirstChild("ShootGun")
+        if shootGun and shootGun:IsA("RemoteFunction") then remote = shootGun end
+    end)
+    return remote
+end
+
+local function rightHandCFrame(character, myRoot)
+    local hand = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm"))
+    if hand then return hand.CFrame end
+    return myRoot and myRoot.CFrame or CFrame.new(0, 0, 0)
+end
+
+local function shootAt(targetPosition)
+    local character, myRoot = getCharacterParts()
+    if not myRoot then return false, "нет персонажа" end
+
+    local gun = ensureEquipped("Gun", 0.6)
+    if not gun then
+        Combat.Status = "пистолет не найден/не экипировался"
+        return false, "пистолет не найден/не экипировался"
+    end
+    character = localPlayer.Character
+    gun = character and character:FindFirstChild("Gun") or gun
+    if not gun or gun.Parent ~= character then
+        return false, "пистолет не в руке"
+    end
+
+    -- доворачиваем корпус к цели (выглядит естественно, помогает серверу)
+    pcall(function()
+        local flat = Vector3.new(targetPosition.X, myRoot.Position.Y, targetPosition.Z)
+        if (flat - myRoot.Position).Magnitude > 0.5 then
+            myRoot.CFrame = CFrame.lookAt(myRoot.Position, flat)
+        end
+    end)
+
+    -- анимация выстрела с тула
+    pcall(function() playToolAnimation(gun, { "fire", "shoot", "recoil", "shot" }) end)
+
+    local fired = false
+    -- 1) Gun.Shoot:FireServer(from, to) — актуальный канал (StyearX)
+    pcall(function()
+        local shoot = findShootRemote(gun)
+        if shoot then
+            shoot:FireServer(rightHandCFrame(character, myRoot), CFrame.new(targetPosition))
+            fired = true
+        end
+    end)
+    -- 2) CreateBeam RemoteFunction(1, pos, тег), тег AH2 -> AH
+    if not fired then
         pcall(function()
-            if isShootGun then
-                remote:InvokeServer(1, 0, SHOT_TAGS[shotTagIndex])
-            else
-                remote:InvokeServer(1, targetPosition, SHOT_TAGS[shotTagIndex])
+            local beam = beamRemote(gun)
+            if beam then
+                beam:InvokeServer(1, targetPosition, SHOT_TAGS[1])
+                fired = true
             end
         end)
     end
-    return true
+    if not fired then
+        pcall(function()
+            local beam = beamRemote(gun)
+            if beam then
+                beam:InvokeServer(1, targetPosition, SHOT_TAGS[2])
+                fired = true
+            end
+        end)
+    end
+    -- 3) ShootGun(1, pos, "AH") — старый канал
+    if not fired then
+        pcall(function()
+            local shootGun = shootGunRemote(gun)
+            if shootGun then
+                shootGun:InvokeServer(1, targetPosition, "AH")
+                fired = true
+            end
+        end)
+    end
+    -- 4) Последний шанс: собственный выстрел тула по камере
+    if not fired then
+        pcall(function()
+            local camera = workspace.CurrentCamera
+            if camera then
+                camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPosition)
+            end
+            if gun.Activate then gun:Activate() end
+            fired = true
+        end)
+    end
+
+    note("shot fired=" .. tostring(fired))
+    return fired, fired and "выстрел отправлен" or "ремоуты выстрела не найдены"
 end
 
 ---------------------------------------------------------------------
--- SheriffAim: тихий выстрел в маньяка (кнопка/клавиша/авто-цикл)
+-- Бросок ножа (ориентированный CFrame + анимация броска с тула)
 ---------------------------------------------------------------------
 
-local function trySheriffShot()
+local function throwKnifeAt(targetPosition)
+    local knife = ensureEquipped("Knife", 0.8)
+    if not knife then
+        Combat.Status = "нож не найден/не экипировался"
+        return false, "нож не найден/не экипировался"
+    end
+    local character = localPlayer.Character
+    local hand = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm"))
+    if not hand then return false, "нет руки" end
+
+    -- KittyHub: анимация броска играется ДО ремоута — бросок не выглядит
+    -- как нож, выпавший из статуи.
+    local track = nil
+    pcall(function() track = playToolAnimation(knife, { "throw", "toss" }) end)
+    local hold = 0.1
+    pcall(function()
+        if track and track.Length > 0 then
+            hold = math.min(track.Length * 0.55, 0.75)
+        end
+    end)
+
+    if hold > 0.02 then task.wait(hold) end
+
+    -- рука могла смениться, пока игралась анимация — берём свежую
+    character = localPlayer.Character
+    hand = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm"))
+    if not hand then return false, "нет руки" end
+
+    local from = CFrame.new(hand.Position)
+    if (targetPosition - hand.Position).Magnitude > 0.5 then
+        from = CFrame.new(hand.Position, targetPosition)
+    end
+
+    local ok = false
+    pcall(function()
+        local events = knife:FindFirstChild("Events")
+        local thrown = events and events:FindFirstChild("KnifeThrown")
+        if not (thrown and thrown:IsA("RemoteEvent")) then
+            thrown = knife:FindFirstChild("Throw")
+        end
+        if thrown and thrown:IsA("RemoteEvent") then
+            -- второй аргумент — ОРИЕНТИРОВАННЫЙ CFrame; голый CFrame.new(point)
+            -- разворачивает нож по мировой оси и он летит мимо
+            thrown:FireServer(from, CFrame.new(targetPosition) * (from - from.Position))
+            ok = true
+        end
+    end)
+    return ok, ok and "бросок отправлен" or "ремоут броска не найден"
+end
+
+---------------------------------------------------------------------
+-- SheriffAim: выстрел в маньяка, при неизвестных ролях — в прицел
+---------------------------------------------------------------------
+
+local function trySheriffShot(allowAimFallback)
     local settings = ConfigRef.Settings
     if not amSheriff() then
-        Combat.Status = "нужна роль ШЕРИФ/ГЕРОЙ"
-        return false, "нужна роль ШЕРИФ/ГЕРОЙ"
+        Combat.Status = "нужна роль ШЕРИФ/ГЕРОЙ (подбери пистолет)"
+        return false, "нужен пистолет (шериф/герой)"
     end
-    local character, myRoot = getCharacterParts()
-    local gun = character and findTool(character, "Gun")
-    if not gun then
-        Combat.Status = "пистолет не найден"
-        return false, "пистолет не найден"
-    end
-    if not myRoot then
-        return false, "нет персонажа"
-    end
-    -- KittyHub: сервер отклоняет выстрел из пистолета, который ещё не в руке.
-    -- Ждём экип до 0.35с (первый выстрел после подбора — типичный «не работает»).
-    if gun.Parent ~= character then
-        local began = os.clock()
-        while gun.Parent ~= character and os.clock() - began < 0.35 do
-            task.wait(0.05)
-            character = localPlayer.Character
-            if not character then return false, "нет персонажа" end
-        end
-        if gun.Parent ~= character then
-            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-            local backpack = localPlayer:FindFirstChildOfClass("Backpack")
-            local stowed = backpack and backpack:FindFirstChild("Gun")
-            if stowed and humanoid then
-                pcall(function() humanoid:EquipTool(stowed) end)
-                gun = character:FindFirstChild("Gun") or stowed
-            end
-        end
-        if gun and gun.Parent ~= character then
-            Combat.Status = "пистолет не экипировался"
-            return false, "пистолет не экипировался"
-        end
+    local _, myRoot = getCharacterParts()
+    if not myRoot then return false, "нет персонажа" end
+    if os.clock() - lastShotAt < 0.45 then
+        return false, "перезарядка"
     end
 
     local murderers = RolesRef.FindByRole("Murderer")
-    if #murderers == 0 then
-        return false, "маньяк неизвестен — роли не определены"
-    end
-    for _, name in ipairs(murderers) do
-        local target = Players:FindFirstChild(name)
-        local root = target and aliveTargetRoot(target)
-        if root and target and target.Character then
-            local dist = (root.Position - myRoot.Position).Magnitude
-            if dist <= (settings.SheriffRange or 300) then
-                if not hasLineOfSight(myRoot, root, target.Character) then
-                    Combat.Status = "маньяк за препятствием"
-                    return false, "маньяк за препятствием"
-                end
-                local ok = fireShot(gun, root.Position)
-                if ok then
-                    Combat.LastKillName = name
-                    Combat.KillCount = Combat.KillCount + 1
-                    Combat.Status = "выстрел: " .. name
-                    if Combat.OnNotify then pcall(Combat.OnNotify, "Выстрел в маньяка: " .. name) end
+    if #murderers > 0 then
+        for _, name in ipairs(murderers) do
+            local target = Players:FindFirstChild(name)
+            local root = target and aliveTargetRoot(target)
+            if root then
+                local dist = (root.Position - myRoot.Position).Magnitude
+                if dist <= (settings.SheriffRange or 300) then
+                    local ok, message = shootAt(root.Position)
                     lastShotAt = os.clock()
-                    return true, "выстрел в " .. name
+                    if ok then
+                        Combat.LastKillName = name
+                        Combat.Status = "выстрел: " .. name
+                        if Combat.OnNotify then pcall(Combat.OnNotify, "Выстрел в маньяка: " .. name) end
+                        return true, "выстрел в " .. name
+                    end
+                    return false, message
                 end
-                return false, "ремоут выстрела не сработал"
+                Combat.Status = string.format("маньяк далеко (%.0fм)", dist)
+                return false, string.format("маньяк далеко (%.0fм)", dist)
             end
         end
     end
-    return false, "маньяк вне дистанции"
+
+    -- роли неизвестны (или маньяк мёртв): выстрел в точку прицела, чтобы
+    -- кнопка всегда делала видимое действие
+    if allowAimFallback then
+        local point = aimPoint(200)
+        if not point then return false, "нет камеры" end
+        local ok, message = shootAt(point)
+        lastShotAt = os.clock()
+        if ok then
+            Combat.Status = "выстрел в прицел (роли неизвестны)"
+            return true, "выстрел в прицел (роли неизвестны)"
+        end
+        return false, message
+    end
+    return false, "маньяк неизвестен — роли не определены"
 end
 
 local function sheriffLoop()
     while sheriffRunning do
-        local ok, err = pcall(trySheriffShot)
+        local ok, err = pcall(trySheriffShot, false)
         if not ok then note("sheriff: " .. tostring(err)) end
         task.wait(jitter(1.2))
     end
+end
+
+---------------------------------------------------------------------
+-- Ближние цели (обёртка с pcall на Roles)
+---------------------------------------------------------------------
+
+local function nearbyTargetsSafe(radius, maxCount)
+    local _, myRoot = getCharacterParts()
+    if not myRoot then return {} end
+    local list = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            local alive = true
+            pcall(function() alive = RolesRef.IsAlive(player.Name) end)
+            if alive then
+                local root = aliveTargetRoot(player)
+                if root and (root.Position - myRoot.Position).Magnitude <= radius then
+                    list[#list + 1] = { Player = player, Root = root }
+                    if maxCount and #list >= maxCount then break end
+                end
+            end
+        end
+    end
+    return list
 end
 
 ---------------------------------------------------------------------
@@ -335,31 +621,25 @@ local function auraLoop()
     while auraRunning do
         local settings = ConfigRef.Settings
         if not amMurderer() then
-            Combat.Status = "нужна роль МАНЬЯК"
+            Combat.Status = "нужна роль МАНЬЯК (подбери нож)"
         else
-            local character = localPlayer.Character
-            local knife = character and findTool(character, "Knife")
-            if not knife then
-                Combat.Status = "нож не найден"
+            local targets = nearbyTargetsSafe(settings.AuraRadius or 14, 2)
+            if #targets == 0 then
+                Combat.Status = "целей рядом нет"
             else
-                local targets = nearbyTargets(settings.AuraRadius or 14, 2)
-                if #targets == 0 then
-                    Combat.Status = "целей рядом нет"
-                else
-                    for _, target in ipairs(targets) do
-                        tpStabTarget(knife, target.Root, target.Player.Character)
-                        -- честный счёт: убийство = цель реально умерла (Health),
-                        -- а не «мы отправили удар»
-                        task.wait(jitter(0.3))
-                        if not aliveTargetRoot(target.Player) then
-                            Combat.KillCount = Combat.KillCount + 1
-                            Combat.LastKillName = target.Player.Name
-                            Combat.Status = "убит: " .. target.Player.Name
-                        else
-                            Combat.Status = "удар: " .. target.Player.Name
-                        end
-                        task.wait(jitter(math.max(0.5, settings.AuraDelay or 1.0)))
+                for _, target in ipairs(targets) do
+                    if not auraRunning then break end
+                    tpStabTarget(target.Root, target.Player.Character)
+                    -- честный счёт: убийство = цель реально умерла
+                    task.wait(jitter(0.3))
+                    if not aliveTargetRoot(target.Player) then
+                        Combat.KillCount = Combat.KillCount + 1
+                        Combat.LastKillName = target.Player.Name
+                        Combat.Status = "убит: " .. target.Player.Name
+                    else
+                        Combat.Status = "удар: " .. target.Player.Name
                     end
+                    task.wait(jitter(math.max(0.5, settings.AuraDelay or 1.0)))
                 end
             end
         end
@@ -372,25 +652,24 @@ end
 ---------------------------------------------------------------------
 
 function Combat.KillAll()
-    if not amMurderer() and not amSheriff() then
+    local isMurderer = amMurderer()
+    local isSheriff = amSheriff()
+    if not isMurderer and not isSheriff then
         return false, "нужна роль МАНЬЯК или ШЕРИФ"
     end
     local radius = (ConfigRef.Settings.KillAllRadius or 60)
-    local targets = nearbyTargets(radius, 12)
+    local targets = nearbyTargetsSafe(radius, 12)
     if #targets == 0 then
         return false, "никого в радиусе " .. tostring(radius)
     end
-    local isMurderer = amMurderer()
     if isMurderer then
-        local character = localPlayer.Character
-        local knife = character and findTool(character, "Knife")
+        local knife = ensureEquipped("Knife", 0.8)
         if not knife then return false, "нож не найден" end
         task.spawn(function()
             for _, target in ipairs(targets) do
-                local fresh = localPlayer.Character
-                local freshKnife = fresh and findTool(fresh, "Knife")
-                if freshKnife then
-                    tpStabTarget(freshKnife, target.Root, target.Player.Character)
+                local freshRoot = aliveTargetRoot(target.Player)
+                if freshRoot then
+                    tpStabTarget(freshRoot, target.Player.Character)
                     task.wait(jitter(0.3))
                     if not aliveTargetRoot(target.Player) then
                         Combat.KillCount = Combat.KillCount + 1
@@ -402,15 +681,13 @@ function Combat.KillAll()
             Combat.Status = "kill all: " .. tostring(#targets) .. " целей"
         end)
     else
-        local character = localPlayer.Character
-        local gun = character and findTool(character, "Gun")
+        local gun = ensureEquipped("Gun", 0.8)
         if not gun then return false, "пистолет не найден" end
         task.spawn(function()
             for _, target in ipairs(targets) do
-                local freshChar = localPlayer.Character
-                local freshGun = freshChar and findTool(freshChar, "Gun")
-                if freshGun and freshGun.Parent == freshChar then
-                    fireShot(freshGun, target.Root.Position)
+                local freshRoot = aliveTargetRoot(target.Player)
+                if freshRoot then
+                    shootAt(freshRoot.Position)
                     task.wait(jitter(0.35))
                     if not aliveTargetRoot(target.Player) then
                         Combat.KillCount = Combat.KillCount + 1
@@ -426,90 +703,101 @@ function Combat.KillAll()
 end
 
 ---------------------------------------------------------------------
--- MurderAim: тихий бросок ножа в шерифа (ориентированный CFrame)
+-- MurderAim: бросок ножа в шерифа (или в прицел, если роли неизвестны)
 ---------------------------------------------------------------------
-
-local function throwKnifeAt(knife, fromRoot, targetPosition)
-    local character = localPlayer.Character
-    local hand = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")) or fromRoot
-    local from = hand.CFrame
-    if (targetPosition - hand.Position).Magnitude > 0.5 then
-        from = CFrame.new(hand.Position, targetPosition)
-    end
-    local ok = pcall(function()
-        local events = knife:FindFirstChild("Events")
-        local thrown = events and events:FindFirstChild("KnifeThrown")
-        if thrown and thrown:IsA("RemoteEvent") then
-            -- KittyHub: второй аргумент — ОРИЕНТИРОВАННЫЙ CFrame (поза from).
-            -- Голый CFrame.new(point) разворачивает нож по мировой оси — он летит
-            -- мимо и сервер отклоняет попадание. Именно это ломало бросок.
-            thrown:FireServer(from, CFrame.new(targetPosition) * (from - from.Position))
-            return
-        end
-        local throw = knife:FindFirstChild("Throw")
-        if throw and throw:IsA("RemoteEvent") then
-            throw:FireServer(from, CFrame.new(targetPosition) * (from - from.Position))
-        else
-            error("нет ремоута броска")
-        end
-    end)
-    return ok
-end
 
 function Combat.MurderAimThrow()
     local settings = ConfigRef.Settings
     if not amMurderer() then
-        Combat.Status = "нужна роль МАНЬЯК"
-        return false, "нужна роль МАНЬЯК"
+        Combat.Status = "нужна роль МАНЬЯК (подбери нож)"
+        return false, "нужен нож (маньяк)"
     end
-    local character, myRoot = getCharacterParts()
-    local knife = character and findTool(character, "Knife")
-    if not knife then
-        Combat.Status = "нож не найден"
-        return false, "нож не найден"
-    end
-    if not myRoot then
-        return false, "нет персонажа"
-    end
-    local sheriffs = RolesRef.FindByRole("Sheriff")
-    if #sheriffs == 0 then
-        return false, "шериф неизвестен — роли не определены"
-    end
-    local target = Players:FindFirstChild(sheriffs[1])
-    local root = target and aliveTargetRoot(target)
-    if not root or not (target and target.Character) then
-        return false, "шериф недоступен"
-    end
-    local dist = (root.Position - myRoot.Position).Magnitude
-    if dist > (settings.AimMaxDistance or 260) then
-        return false, string.format("далеко: %.0fм", dist)
-    end
+    local _, myRoot = getCharacterParts()
+    if not myRoot then return false, "нет персонажа" end
     if os.clock() - lastThrowAt < 1.0 then
         return false, "нож ещё летит (перезарядка)"
     end
-    if not hasLineOfSight(myRoot, root, target.Character) then
-        Combat.Status = "шериф за препятствием"
-        return false, "шериф за препятствием"
+
+    local sheriffs = RolesRef.FindByRole("Sheriff")
+    if #sheriffs > 0 then
+        local target = Players:FindFirstChild(sheriffs[1])
+        local root = target and aliveTargetRoot(target)
+        if root then
+            local dist = (root.Position - myRoot.Position).Magnitude
+            if dist > (settings.AimMaxDistance or 260) then
+                return false, string.format("далеко: %.0fм", dist)
+            end
+            local ok, message = throwKnifeAt(root.Position)
+            lastThrowAt = os.clock()
+            if ok then
+                Combat.LastKillName = sheriffs[1]
+                Combat.Status = "бросок ножа: " .. sheriffs[1]
+                if Combat.OnNotify then pcall(Combat.OnNotify, "Бросок ножа в шерифа: " .. sheriffs[1]) end
+                return true, "бросок в " .. sheriffs[1]
+            end
+            return false, message
+        end
     end
 
-    local ok = throwKnifeAt(knife, myRoot, root.Position)
+    -- шериф неизвестен: бросок в точку прицела
+    local point = aimPoint(200)
+    if not point then return false, "нет камеры" end
+    local ok, message = throwKnifeAt(point)
     lastThrowAt = os.clock()
-    if not ok then
-        Combat.Status = "ремоут броска не найден"
-        return false, "ремоут броска не найден"
+    if ok then
+        Combat.Status = "бросок в прицел (шериф неизвестен)"
+        return true, "бросок в прицел (шериф неизвестен)"
     end
-    Combat.LastKillName = sheriffs[1]
-    Combat.Status = "бросок ножа: " .. sheriffs[1]
-    if Combat.OnNotify then pcall(Combat.OnNotify, "Бросок ножа в шерифа: " .. sheriffs[1]) end
-    return true, "бросок в " .. sheriffs[1]
+    return false, message
 end
 
 ---------------------------------------------------------------------
--- SheriffAimShot: то же, но по кнопке/клавише (без цикла)
+-- SheriffAimShot: по кнопке/клавише (с фолбэком в прицел)
 ---------------------------------------------------------------------
 
 function Combat.SheriffAimShot()
-    return trySheriffShot()
+    return trySheriffShot(true)
+end
+
+---------------------------------------------------------------------
+-- StabNearest: удар ножом в ближайшего живого (кнопка быстрого меню)
+---------------------------------------------------------------------
+
+function Combat.StabNearest()
+    if not amMurderer() then
+        Combat.Status = "нужна роль МАНЬЯК (подбери нож)"
+        return false, "нужен нож (маньяк)"
+    end
+    local _, myRoot = getCharacterParts()
+    if not myRoot then return false, "нет персонажа" end
+    local targets = nearbyTargetsSafe(30, 1)
+    if #targets == 0 then
+        -- никого рядом: удар в точку прицела (если там кто-то есть)
+        local point = aimPoint(150)
+        if point then
+            local ok = stabInPlace(nil)
+            return ok, ok and "замах в прицел" or "нож не экипировался"
+        end
+        return false, "рядом никого"
+    end
+    local target = targets[1]
+    local dist = (target.Root.Position - myRoot.Position).Magnitude
+    local ok
+    if dist > 6 then
+        ok = tpStabTarget(target.Root, target.Player.Character)
+    else
+        ok = stabInPlace(target.Root)
+    end
+    if ok then
+        Combat.Status = "удар: " .. target.Player.Name
+        task.wait(jitter(0.3))
+        if not aliveTargetRoot(target.Player) then
+            Combat.KillCount = Combat.KillCount + 1
+            Combat.LastKillName = target.Player.Name
+            Combat.Status = "убит: " .. target.Player.Name
+        end
+    end
+    return ok, ok and ("удар по " .. target.Player.Name) or "не экипировался"
 end
 
 ---------------------------------------------------------------------
@@ -518,35 +806,20 @@ end
 
 function Combat.ThrowAtAim()
     if not amMurderer() then
-        return false, "нужна роль МАНЬЯК"
+        return false, "нужен нож (маньяк)"
     end
-    local character, myRoot = getCharacterParts()
-    local knife = character and findTool(character, "Knife")
-    if not knife then return false, "нож не найден" end
-    if not myRoot then return false, "нет персонажа" end
     if os.clock() - lastThrowAt < 1.0 then
         return false, "нож ещё летит (перезарядка)"
     end
-    local camera = workspace.CurrentCamera
-    if not camera then return false, "нет камеры" end
-    local targetPoint = nil
-    pcall(function()
-        local mouse = UserInputService:GetMouseLocation()
-        local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        if localPlayer.Character then params.FilterDescendantsInstances = { localPlayer.Character } end
-        local result = workspace:Raycast(ray.Origin, ray.Direction * 600, params)
-        targetPoint = result and result.Position or (ray.Origin + ray.Direction * 200)
-    end)
-    if not targetPoint then
-        targetPoint = (camera.CFrame * CFrame.new(0, 0, -150)).Position
-    end
-    local ok = throwKnifeAt(knife, myRoot, targetPoint)
+    local point = aimPoint(200)
+    if not point then return false, "нет камеры" end
+    local ok, message = throwKnifeAt(point)
     lastThrowAt = os.clock()
-    if not ok then return false, "ремоут броска не найден" end
-    Combat.Status = "бросок в прицел"
-    return true, "бросок выполнен"
+    if ok then
+        Combat.Status = "бросок в прицел"
+        return true, "бросок выполнен"
+    end
+    return false, message
 end
 
 ---------------------------------------------------------------------
@@ -583,21 +856,20 @@ local function dodgeNow(myRoot, threatPosition)
     Combat.Status = "dodge!"
 end
 
--- Профили AutoDodge (аудит v0.4.0: вместо 4 контролов — тогл + один профиль;
--- тонкую ручную настройку прячем в Расширенные).
+-- Профили AutoDodge (аудит v0.4.0: вместо 4 контролов — тогл + один профиль).
 local DODGE_PROFILES = {
-        Calm       = { Power = 10, Cooldown = 1.6, Radius = 38 },
-        Balanced   = { Power = 12, Cooldown = 1.2, Radius = 45 },
-        Aggressive = { Power = 16, Cooldown = 0.8, Radius = 55 },
+    Calm       = { Power = 10, Cooldown = 1.6, Radius = 38 },
+    Balanced   = { Power = 12, Cooldown = 1.2, Radius = 45 },
+    Aggressive = { Power = 16, Cooldown = 0.8, Radius = 55 },
 }
 
 function Combat.SetDodgeProfile(name)
-        local profile = DODGE_PROFILES[name] or DODGE_PROFILES.Balanced
-        if ConfigRef and ConfigRef.Settings then
-                ConfigRef.Settings.DodgePower = profile.Power
-                ConfigRef.Settings.DodgeCooldown = profile.Cooldown
-                ConfigRef.Settings.DodgeRadius = profile.Radius
-        end
+    local profile = DODGE_PROFILES[name] or DODGE_PROFILES.Balanced
+    if ConfigRef and ConfigRef.Settings then
+        ConfigRef.Settings.DodgePower = profile.Power
+        ConfigRef.Settings.DodgeCooldown = profile.Cooldown
+        ConfigRef.Settings.DodgeRadius = profile.Radius
+    end
 end
 
 local function dodgeLoop()
@@ -631,21 +903,24 @@ local function dodgeLoop()
                     for _, player in ipairs(Players:GetPlayers()) do
                         if dodged then break end
                         if player ~= localPlayer then
-                            -- угрозой считаем маньяка/шерифа по ролям ИЛИ любого
-                            -- с ножом в руке (стрелявшего героя фиксируем по пистолету)
-                            local role = RolesRef.Get(player.Name)
+                            local role = nil
+                            pcall(function() role = RolesRef.Get(player.Name) end)
                             local character = player.Character
                             local root = character and character:FindFirstChild("HumanoidRootPart")
                             local armed = role == "Murderer" or role == "Sheriff" or role == "Hero"
                                 or (character and (character:FindFirstChild("Knife") or character:FindFirstChild("Gun"))) ~= nil
-                            if root and armed and RolesRef.IsAlive(player.Name) then
-                                local dist = (root.Position - myRoot.Position).Magnitude
-                                if dist < 16 then
-                                    local look = root.CFrame.LookVector
-                                    local toMe = (myRoot.Position - root.Position).Unit
-                                    if look:Dot(toMe) > 0.78 then
-                                        dodgeNow(myRoot, root.Position)
-                                        dodged = true
+                            if root and armed then
+                                local alive = true
+                                pcall(function() alive = RolesRef.IsAlive(player.Name) end)
+                                if alive then
+                                    local dist = (root.Position - myRoot.Position).Magnitude
+                                    if dist < 16 then
+                                        local look = root.CFrame.LookVector
+                                        local toMe = (myRoot.Position - root.Position).Unit
+                                        if look:Dot(toMe) > 0.78 then
+                                            dodgeNow(myRoot, root.Position)
+                                            dodged = true
+                                        end
                                     end
                                 end
                             end
@@ -731,6 +1006,12 @@ function Combat.Destroy()
     end
     dodgeConnections = {}
     watchedProjectiles = {}
+    pcall(function()
+        local character = localPlayer.Character
+        local tool = character and (character:FindFirstChild("Knife") or character:FindFirstChild("Gun"))
+        if tool then stopCachedAnimation(tool) end
+    end)
+    animCache = {}
 end
 
 return Combat
